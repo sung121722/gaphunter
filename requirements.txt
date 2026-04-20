@@ -3,6 +3,7 @@ python-dotenv>=1.0.0
 
 # ── Data Collection ───────────────────────────────────────
 pytrends>=4.9.2          # Google Trends (relative values)
+urllib3<2.0              # pytrends는 urllib3 v2 호환 안 됨
 httpx>=0.27.0            # async HTTP client (competitor crawling)
 beautifulsoup4>=4.12.0   # HTML parsing
 lxml>=5.2.0              # BS4 parser backend
