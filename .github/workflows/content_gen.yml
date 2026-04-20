@@ -1,0 +1,38 @@
+name: Content Generation
+
+on:
+  schedule:
+    - cron: "0 0 * * *"    # 09:00 KST (UTC+9)
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate content for URGENT gaps
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          SERPAPI_KEY:         ${{ secrets.SERPAPI_KEY }}
+          GOOGLE_CSE_KEY:      ${{ secrets.GOOGLE_CSE_KEY }}
+          COLAB_PREDICTOR_URL: ${{ secrets.COLAB_PREDICTOR_URL }}
+          DRY_RUN_MODE:        "false"
+          MAX_CLAUDE_CALLS_PER_RUN: "5"
+        run: |
+          python main.py --niche "${{ vars.NICHE }}" --geo "${{ vars.GEO || 'US' }}"
+
+      - name: Commit generated posts
+        run: |
+          git config user.name  "GapHunter Bot"
+          git config user.email "bot@gaphunter.io"
+          git add posts/ wiki/
+          git diff --staged --quiet || git commit -m "feat: generated post $(date -u +%Y-%m-%d)"
+          git push

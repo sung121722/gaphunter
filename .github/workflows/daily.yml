@@ -1,0 +1,250 @@
+name: GapHunter Daily
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # 매일 00:00 UTC = 09:00 KST
+  workflow_dispatch:        # 수동 실행 버튼
+
+jobs:
+
+  # ── EN: Blogger 완전 자동 발행 ─────────────────────────────────────────────
+  publish-en:
+    name: EN → Blogger (자동 발행)
+    runs-on: ubuntu-latest
+    outputs:
+      status:   ${{ steps.run.outputs.status }}
+      post_url: ${{ steps.run.outputs.post_url }}
+      keyword:  ${{ steps.run.outputs.keyword }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run EN pipeline
+        id: run
+        env:
+          ANTHROPIC_API_KEY:      ${{ secrets.ANTHROPIC_API_KEY }}
+          SERPAPI_KEY:            ${{ secrets.SERPAPI_KEY }}
+          GOOGLE_CSE_KEY:         ${{ secrets.GOOGLE_CSE_KEY }}
+          AMAZON_ASSOCIATES_ID:   ${{ secrets.AMAZON_ASSOCIATES_ID }}
+          BLOGGER_BLOG_ID:        ${{ secrets.BLOGGER_BLOG_ID }}
+          GOOGLE_REFRESH_TOKEN:   ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_CLIENT_ID:       ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET:   ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          COLAB_PREDICTOR_URL:    ${{ secrets.COLAB_PREDICTOR_URL }}
+          DRY_RUN_MODE:           "false"
+        run: |
+          python - <<'EOF'
+          import sys, json
+          sys.path.insert(0, '.')
+          from core.keyword_scheduler import pick_keyword, log_keyword
+          from core.collector  import collect
+          from core.predictor  import run_predictions
+          from core.scorer     import score_gap
+          from core.generator  import generate_post
+          from core.publisher  import publish
+          import config
+
+          lang    = "en"
+          keyword = pick_keyword(lang)
+          print(f"[EN] 오늘의 키워드: {keyword}")
+
+          snapshot    = collect(keyword, geo="US")
+          predictions = run_predictions(snapshot)
+          gap_result  = score_gap(keyword, predictions)
+          score       = gap_result["gap_score"]
+          print(f"[EN] gap_score: {score}")
+
+          post_result = generate_post(keyword, gap_result, language=lang)
+          if post_result.get("skipped"):
+              print(f"[EN] 생성 스킵: {post_result['reason']}")
+              print("status=skipped", file=open('/tmp/gh_output.txt','w'))
+              sys.exit(0)
+
+          title   = f"Best {keyword.title()} 2026: Tested and Ranked"
+          content = post_result["content"]
+          pub     = publish(title, content, language=lang, dry_run=False)
+
+          status   = pub.get("status", "error")
+          post_url = pub.get("post_url", "")
+          products = post_result.get("verified_products", [])
+
+          log_keyword(keyword, lang, post_result["file_path"], products, status)
+
+          with open('/tmp/gh_output.txt', 'w') as f:
+              f.write(f"status={status}\n")
+              f.write(f"post_url={post_url}\n")
+              f.write(f"keyword={keyword}\n")
+
+          print(f"[EN] 발행 완료: {status} → {post_url}")
+          EOF
+
+          while IFS= read -r line; do
+            echo "$line" >> $GITHUB_OUTPUT
+          done < /tmp/gh_output.txt
+
+      - name: Commit posts & wiki
+        run: |
+          git config user.name  "GapHunter Bot"
+          git config user.email "bot@gaphunter.com"
+          git add posts/ wiki/
+          git diff --staged --quiet || git commit -m "feat(en): daily post - $(date +%Y-%m-%d)"
+          git push
+
+
+  # ── KO: 포스트 생성 + GitHub Issue 알림 ───────────────────────────────────
+  generate-ko:
+    name: KO → 포스트 생성 + 발행 알림
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate KO post
+        id: generate
+        env:
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+          SERPAPI_KEY:         ${{ secrets.SERPAPI_KEY }}
+          GOOGLE_CSE_KEY:      ${{ secrets.GOOGLE_CSE_KEY }}
+          COUPANG_PARTNERS_ID: ${{ secrets.COUPANG_PARTNERS_ID }}
+          COLAB_PREDICTOR_URL: ${{ secrets.COLAB_PREDICTOR_URL }}
+          DRY_RUN_MODE:        "false"
+        run: |
+          python - <<'EOF'
+          import sys, json
+          sys.path.insert(0, '.')
+          from core.keyword_scheduler import pick_keyword, log_keyword
+          from core.collector  import collect
+          from core.predictor  import run_predictions
+          from core.scorer     import score_gap
+          from core.generator  import generate_post
+          import config
+
+          lang    = "ko"
+          keyword = pick_keyword(lang)
+          print(f"[KO] 오늘의 키워드: {keyword}")
+
+          snapshot    = collect(keyword, geo="KR")
+          predictions = run_predictions(snapshot)
+          gap_result  = score_gap(keyword, predictions)
+          score       = gap_result["gap_score"]
+          print(f"[KO] gap_score: {score}")
+
+          post_result = generate_post(keyword, gap_result, language=lang)
+          if post_result.get("skipped"):
+              print(f"[KO] 생성 스킵: {post_result['reason']}")
+              sys.exit(0)
+
+          products  = post_result.get("verified_products", [])
+          file_path = post_result["file_path"]
+          file_name = file_path.split("/")[-1].split("\\")[-1]
+
+          log_keyword(keyword, lang, file_path, products, status="generated")
+
+          product_list = "\n".join(f"- {p}" for p in products) if products else "- (상품 목록 없음)"
+
+          issue_body = f"""## 📋 오늘의 티스토리 발행 대기 포스트
+
+**키워드:** `{keyword}`
+**파일명:** `posts/{file_name}`
+**Gap Score:** {score}/100
+
+---
+
+### ✅ 할 일 (15분)
+
+1. **아래 제품들** 쿠팡 파트너스에서 링크 생성
+2. `posts/{file_name}` 파일에 링크 교체
+3. 티스토리 HTML 모드로 붙여넣기 → 발행
+
+---
+
+### 🛒 쿠팡 파트너스 링크 필요 제품
+
+{product_list}
+
+> [partners.coupang.com](https://partners.coupang.com) → 상품 검색 → 링크 생성
+
+---
+
+*GapHunter Bot이 자동 생성*"""
+
+          html_body = f"""
+<html><body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;">
+<h2 style="color:#e84c5a;">📋 GapHunter — 티스토리 발행 대기</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+  <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">키워드</td>
+      <td style="padding:8px;">{keyword}</td></tr>
+  <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">파일명</td>
+      <td style="padding:8px;font-family:monospace;">posts/{file_name}</td></tr>
+  <tr><td style="padding:8px;background:#f5f5f5;font-weight:bold;">Gap Score</td>
+      <td style="padding:8px;">{score}/100</td></tr>
+</table>
+
+<h3>✅ 할 일 (약 15분)</h3>
+<ol>
+  <li>아래 제품들 <a href="https://partners.coupang.com">쿠팡 파트너스</a>에서 링크 생성</li>
+  <li><code>posts/{file_name}</code> 파일에 링크 교체</li>
+  <li>티스토리 HTML 모드로 붙여넣기 → 발행</li>
+</ol>
+
+<h3>🛒 쿠팡 파트너스 링크 필요 제품</h3>
+<ul>
+{''.join(f"<li>{p}</li>" for p in products) if products else "<li>(상품 목록 없음)</li>"}
+</ul>
+
+<hr>
+<p style="color:#999;font-size:12px;">GapHunter Bot · 자동 생성됨</p>
+</body></html>"""
+
+          with open('/tmp/issue.txt', 'w') as f:
+              f.write(html_body)
+
+          with open('/tmp/ko_output.txt', 'w') as f:
+              f.write(f"file_name={file_name}\n")
+              f.write(f"keyword={keyword}\n")
+              f.write(f"score={score}\n")
+
+          print(f"[KO] 포스트 생성 완료: {file_name}")
+          EOF
+
+          while IFS= read -r line; do
+            echo "$line" >> $GITHUB_OUTPUT
+          done < /tmp/ko_output.txt
+
+      - name: 이메일 알림 (티스토리 발행 대기)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.naver.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.NAVER_EMAIL }}
+          password: ${{ secrets.NAVER_PASSWORD }}
+          subject: "[GapHunter] 티스토리 발행 대기 - ${{ steps.generate.outputs.keyword }} (${{ steps.generate.outputs.score }}점)"
+          to: kang_1214@naver.com
+          from: GapHunter Bot <${{ secrets.NAVER_EMAIL }}>
+          html_body: file:///tmp/issue.txt
+
+      - name: Commit posts & wiki
+        run: |
+          git config user.name  "GapHunter Bot"
+          git config user.email "bot@gaphunter.com"
+          git add posts/ wiki/
+          git diff --staged --quiet || git commit -m "feat(ko): daily post draft - $(date +%Y-%m-%d)"
+          git push
