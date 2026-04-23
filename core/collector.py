@@ -197,10 +197,16 @@ def get_keyword_trends(
     logger.info("Fetching pytrends for '%s' (delay %.1fs)", keyword, delay)
     time.sleep(delay)
 
-    series = _fetch_pytrends_with_retry(keyword, timeframe, geo)
-    if series:
-        _save_trend_rows(keyword, geo, series, "pytrends")
-    return series
+    try:
+        series = _fetch_pytrends_with_retry(keyword, timeframe, geo)
+        if series:
+            _save_trend_rows(keyword, geo, series, "pytrends")
+        return series
+    except Exception as e:
+        logger.warning("pytrends failed (%s) — falling back to dummy data", e)
+        series = _dummy_trend_series(keyword)
+        _save_trend_rows(keyword, geo, series, "dummy_fallback")
+        return series
 
 
 def get_search_console_data(keyword: str, days: int = 90) -> dict:

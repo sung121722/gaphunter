@@ -11,6 +11,8 @@ jobs:
   publish-en:
     name: EN Blogger 자동 발행
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
