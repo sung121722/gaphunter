@@ -53,6 +53,8 @@ jobs:
   generate-ko:
     name: KO 포스트 생성 + 이메일 알림
     runs-on: ubuntu-latest
+    needs: publish-en
+    if: always()
     permissions:
       contents: write
 
