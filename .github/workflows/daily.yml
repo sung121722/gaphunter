@@ -45,6 +45,7 @@ jobs:
           git config user.email "bot@gaphunter.com"
           git add posts/ wiki/
           git diff --staged --quiet || git commit -m "feat(en): daily post - $(date +%Y-%m-%d)"
+          git pull --rebase origin main
           git push
 
 
@@ -95,4 +96,5 @@ jobs:
           git config user.email "bot@gaphunter.com"
           git add posts/ wiki/
           git diff --staged --quiet || git commit -m "feat(ko): daily post draft - $(date +%Y-%m-%d)"
+          git pull --rebase origin main
           git push
