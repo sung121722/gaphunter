@@ -320,7 +320,7 @@ def _log_publish(result: dict) -> None:
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-DAILY_LIMITS = {"tistory": 2, "blogger": 1}
+DAILY_LIMITS = {"tistory": 3, "blogger": 3}
 
 
 def publish(
