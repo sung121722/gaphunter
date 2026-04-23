@@ -40,7 +40,7 @@ PYTRENDS_DELAY_MAX   = float(os.getenv("PYTRENDS_DELAY_MAX", 7))   # seconds
 PYTRENDS_MAX_RETRIES = int(os.getenv("PYTRENDS_MAX_RETRIES", 5))
 
 # ─── Content Generation Settings ─────────────────────────────────────────────
-MIN_WORD_COUNT_EN  = 800
+MIN_WORD_COUNT_EN  = 1500
 MIN_CHAR_COUNT_KO  = 1500
 CLAUDE_MODEL       = "claude-sonnet-4-20250514"
 

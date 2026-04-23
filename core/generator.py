@@ -182,7 +182,7 @@ def _build_user_prompt(keyword: str, gap_data: dict, language: str,
 <h2>최종 추천</h2>
 (100자: 가장 강력한 제품 1개 추천 이유 명시, [COUPANG_LINK:제품명] 포함)"""
     else:
-        length_instruction = f"Minimum {config.MIN_WORD_COUNT_EN} words"
+        length_instruction = f"Minimum {config.MIN_WORD_COUNT_EN} words. Each section must be thorough — no thin content."
         lang_note = "Write in English. American tone, direct and specific."
         affiliate_note = (
             "Amazon link placeholder: [AMAZON_LINK:KEYWORD] — include naturally. "
@@ -243,7 +243,7 @@ def _claude_post(keyword: str, gap_data: dict, language: str,
                 keyword, language, len(products))
     message = client.messages.create(
         model=config.CLAUDE_MODEL,
-        max_tokens=4096,
+        max_tokens=8192,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],
     )
