@@ -209,9 +209,12 @@ def _build_user_prompt(keyword: str, gap_data: dict, language: str,
 <h2>Our Pick</h2>
 (single strongest recommendation with specific reason, include [AMAZON_LINK:{keyword}])"""
 
+    current_year = datetime.date.today().year
+
     return f"""Write a complete SEO article targeting: "{keyword}"
 
 Context:
+- Current year: {current_year}
 - Gap score: {gap_score}/100 (gap opens ~{gap_date})
 - Decaying competitor: {competitor_url} (decay: {decay_prob:.0%})
 - Language: {lang_note}
