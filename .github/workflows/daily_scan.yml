@@ -1,9 +1,7 @@
 name: Daily Scan
 
 on:
-  schedule:
-    - cron: "0 21 * * *"   # 06:00 KST (UTC+9)
-  workflow_dispatch:        # manual trigger
+  workflow_dispatch:        # manual trigger only (disabled auto schedule)
 
 jobs:
   scan:

@@ -1,9 +1,7 @@
 name: Content Generation
 
 on:
-  schedule:
-    - cron: "0 0 * * *"    # 09:00 KST (UTC+9)
-  workflow_dispatch:
+  workflow_dispatch:        # manual trigger only (disabled auto schedule)
 
 jobs:
   generate:

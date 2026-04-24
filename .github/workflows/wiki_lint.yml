@@ -1,9 +1,7 @@
 name: Wiki Lint
 
 on:
-  schedule:
-    - cron: "0 0 * * 1"    # Every Monday 09:00 KST
-  workflow_dispatch:
+  workflow_dispatch:        # manual trigger only (disabled auto schedule)
 
 jobs:
   lint:
