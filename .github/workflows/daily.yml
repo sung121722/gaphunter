@@ -2,7 +2,7 @@ name: GapHunter Daily
 
 on:
   schedule:
-    - cron: '0 0 * * *'   # 매일 00:00 UTC = 09:00 KST
+    - cron: '17 1 * * *'  # 매일 01:17 UTC = 10:17 KST (피크 시간 회피)
   workflow_dispatch:        # 수동 실행 버튼
 
 jobs:
