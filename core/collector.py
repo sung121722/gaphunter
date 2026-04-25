@@ -374,7 +374,21 @@ def crawl_competitor_page(url: str) -> dict:
     soup = BeautifulSoup(resp.text, "lxml")
 
     title = soup.title.string.strip() if soup.title else ""
-    body_text = soup.get_text(separator=" ", strip=True)
+
+    # Remove noise tags before extracting text
+    for tag in soup(["script", "style", "nav", "footer", "header",
+                     "aside", "form", "noscript", "iframe"]):
+        tag.decompose()
+
+    # Prefer <article> or <main> for main content; fallback to <body>
+    main = (
+        soup.find("article") or
+        soup.find("main") or
+        soup.find("div", {"id": "content"}) or
+        soup.find("div", {"class": lambda c: c and "content" in c}) or
+        soup.body
+    )
+    body_text = main.get_text(separator=" ", strip=True) if main else ""
     word_count = len(body_text.split())
 
     headings = [
@@ -410,6 +424,7 @@ def crawl_competitor_page(url: str) -> dict:
         "headings": headings,
         "internal_links": internal_links,
         "external_links": external_links,
+        "body_text": body_text[:3000],   # 실시간 리뷰 본문 (Claude 프롬프트용)
     }
 
 

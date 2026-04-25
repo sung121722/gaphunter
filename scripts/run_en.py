@@ -17,6 +17,7 @@ print(f"[EN] 오늘의 키워드: {keyword}")
 snapshot    = collect(keyword, geo="US")
 predictions = run_predictions(snapshot)
 gap_result  = score_gap(keyword, predictions)
+gap_result["competitors"] = snapshot.get("competitors", [])   # 실시간 크롤링 본문 전달
 score       = gap_result["gap_score"]
 print(f"[EN] gap_score: {score}")
 

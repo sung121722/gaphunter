@@ -47,21 +47,97 @@ STRICT RULES:
 
 # ─── Step 1: 상품 조사 (SerpAPI) ──────────────────────────────────────────────
 
+def _crawl_product_details(url: str, language: str) -> dict:
+    """
+    제품 페이지를 실시간 크롤링해 실제 스펙·가격·특징 추출.
+    Amazon(EN) / Coupang(KO) 모두 지원. 실패 시 빈 dict 반환.
+    """
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.8" if language == "ko" else "en-US,en;q=0.9",
+        }
+        resp = httpx.get(url, headers=headers, timeout=12, follow_redirects=True)
+        if resp.status_code != 200:
+            return {}
+
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        result = {}
+
+        if language == "en" and "amazon.com" in url:
+            # Amazon 제품 페이지 파싱
+            t = soup.find("span", {"id": "productTitle"})
+            result["name"] = t.get_text(strip=True)[:120] if t else ""
+
+            # 가격 (여러 selector 시도)
+            for sel in ["span.a-price-whole", "#priceblock_ourprice",
+                        "#priceblock_dealprice", "span.a-offscreen"]:
+                p = soup.select_one(sel)
+                if p:
+                    result["price"] = p.get_text(strip=True)[:30]
+                    break
+
+            # 제품 특징 bullet points
+            bullets = soup.select("#feature-bullets ul li span.a-list-item")
+            result["features"] = [b.get_text(strip=True)[:150]
+                                   for b in bullets[:6] if b.get_text(strip=True)]
+
+            # 별점
+            r = soup.select_one("span.a-icon-alt")
+            result["rating"] = r.get_text(strip=True)[:20] if r else ""
+
+            # 리뷰 수
+            rc = soup.select_one("#acrCustomerReviewText")
+            result["review_count"] = rc.get_text(strip=True)[:30] if rc else ""
+
+        elif language == "ko" and "coupang.com" in url:
+            # 쿠팡 제품 페이지 파싱
+            t = soup.find("h1", {"class": "prod-buy-header__title"}) or \
+                soup.find("div", {"class": "prod-title"})
+            result["name"] = t.get_text(strip=True)[:120] if t else ""
+
+            p = soup.select_one("strong.prod-buy-price__item-price") or \
+                soup.select_one(".total-price strong")
+            result["price"] = p.get_text(strip=True)[:30] if p else ""
+
+            bullets = soup.select(".prod-attr-list li") or \
+                      soup.select(".product-detail-content li")
+            result["features"] = [b.get_text(strip=True)[:150]
+                                   for b in bullets[:6] if b.get_text(strip=True)]
+
+            r = soup.select_one(".rating-star-num")
+            result["rating"] = r.get_text(strip=True)[:20] if r else ""
+
+        return result
+
+    except Exception as e:
+        logger.debug("Product crawl failed for %s: %s", url, e)
+        return {}
+
+
 def _search_products(keyword: str, language: str) -> list[dict]:
     """
-    SerpAPI로 쿠팡(KO) 또는 아마존(EN) 실제 상품을 검색해 반환.
+    SerpAPI로 쿠팡(KO) 또는 아마존(EN) 실제 상품을 검색 후
+    제품 페이지를 실시간 크롤링해 스펙·가격·특징까지 보강.
     DRY_RUN 또는 키 없으면 더미 반환.
 
-    Returns: [{"name": str, "url": str, "price": str, "source": str}, ...]
+    Returns: [{"name": str, "url": str, "price": str, "features": [...], ...}, ...]
     """
     if config.DRY_RUN_MODE or not config.SERPAPI_KEY:
         logger.info("[DRY] _search_products: returning dummy products for '%s'", keyword)
         return _dummy_products(keyword, language)
 
+    current_year = datetime.date.today().year
     if language == "ko":
         query = f"site:coupang.com {keyword} 로켓배송"
     else:
-        query = f"site:amazon.com {keyword} best seller"
+        query = f"site:amazon.com {keyword} best seller {current_year}"
 
     params = {
         "q":       query,
@@ -81,8 +157,8 @@ def _search_products(keyword: str, language: str) -> list[dict]:
 
     products = []
     for item in data.get("organic_results", []):
-        title = item.get("title", "")
-        url   = item.get("link", "")
+        title   = item.get("title", "")
+        url     = item.get("link", "")
         snippet = item.get("snippet", "")
 
         # 쿠팡/아마존 상품 페이지만 필터
@@ -91,18 +167,36 @@ def _search_products(keyword: str, language: str) -> list[dict]:
         if language == "en" and "amazon.com" not in url:
             continue
 
-        # 간단한 가격 파싱 (snippet에서)
+        # snippet에서 가격 파싱 (크롤링 전 기본값)
         price_match = re.search(r'[\$₩][\d,]+|[\d,]+원', snippet)
         price = price_match.group(0) if price_match else "가격 확인 필요"
 
-        products.append({
-            "name":    title[:80],
-            "url":     url,
-            "price":   price,
-            "snippet": snippet[:150],
-            "source":  "coupang" if language == "ko" else "amazon",
-        })
+        product = {
+            "name":     title[:80],
+            "url":      url,
+            "price":    price,
+            "snippet":  snippet[:150],
+            "features": [],
+            "rating":   "",
+            "source":   "coupang" if language == "ko" else "amazon",
+        }
 
+        # ── 실시간 제품 페이지 크롤링으로 스펙 보강 ──────────────────
+        details = _crawl_product_details(url, language)
+        if details:
+            if details.get("name"):
+                product["name"] = details["name"]
+            if details.get("price"):
+                product["price"] = details["price"]
+            if details.get("features"):
+                product["features"] = details["features"]
+            if details.get("rating"):
+                product["rating"] = details["rating"]
+            if details.get("review_count"):
+                product["review_count"] = details["review_count"]
+            logger.info("Crawled product details for: %s", product["name"][:50])
+
+        products.append(product)
         if len(products) >= 5:
             break
 
@@ -138,16 +232,37 @@ def _build_user_prompt(keyword: str, gap_data: dict, language: str,
     decay_prob     = gap_data.get("decay_probability", 0)
     gap_date       = gap_data.get("predicted_gap_date", "")
 
-    # 검색된 상품 목록 → 프롬프트용 텍스트
+    # 검색된 상품 목록 → 프롬프트용 텍스트 (실시간 크롤링 스펙 포함)
     product_lines = []
     for i, p in enumerate(products, 1):
+        features_text = ""
+        if p.get("features"):
+            features_text = "\n     Features:\n" + "\n".join(
+                f"       - {f}" for f in p["features"]
+            )
+        rating_text = f"\n     Rating: {p['rating']}" if p.get("rating") else ""
+        review_text = f" ({p['review_count']})" if p.get("review_count") else ""
         product_lines.append(
             f"  {i}. {p['name']}\n"
             f"     URL: {p['url']}\n"
-            f"     Price: {p['price']}\n"
-            f"     Info: {p.get('snippet', '')}"
+            f"     Price: {p['price']}"
+            f"{rating_text}{review_text}\n"
+            f"     Snippet: {p.get('snippet', '')}"
+            f"{features_text}"
         )
-    product_block = "\n".join(product_lines) if product_lines else "  (검색 결과 없음)"
+    product_block = "\n\n".join(product_lines) if product_lines else "  (검색 결과 없음)"
+
+    # 경쟁사 페이지 실시간 리뷰 본문 (collector에서 크롤링된 body_text)
+    competitor_refs = gap_data.get("competitors", [])
+    ref_lines = []
+    for c in competitor_refs[:2]:
+        body = c.get("body_text", "").strip()
+        if body:
+            ref_lines.append(
+                f"  Source: {c.get('url', '')[:80]}\n"
+                f"  Excerpt: {body[:1500]}"
+            )
+    reference_block = "\n\n".join(ref_lines) if ref_lines else "  (없음)"
 
     if language == "ko":
         length_instruction = f"최소 {config.MIN_CHAR_COUNT_KO}자 (한국어)"
@@ -215,14 +330,19 @@ def _build_user_prompt(keyword: str, gap_data: dict, language: str,
 
 Context:
 - Current year: {current_year}
+- IMPORTANT: This article is for {current_year}. All recommendations, prices, and info must reflect {current_year} reality. Do NOT reference outdated info.
 - Gap score: {gap_score}/100 (gap opens ~{gap_date})
 - Decaying competitor: {competitor_url} (decay: {decay_prob:.0%})
 - Language: {lang_note}
 - Length: {length_instruction}
 - {affiliate_note}
 
-Verified Products (ONLY use these — do NOT invent other products):
+Verified Products — scraped in real-time today ({datetime.date.today()}).
+Use ONLY these products. Use the Features bullets for accurate specs:
 {product_block}
+
+Reference Sources — live-crawled competitor/review pages (use for accurate specs & context):
+{reference_block}
 
 Required HTML structure:
 {structure}
