@@ -26,23 +26,72 @@ logger = logging.getLogger(__name__)
 
 # ─── Prompt templates ─────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are an expert SEO content writer. Write in a natural, conversational tone
-that sounds like a real person who has used and tested these products — not a corporate marketer.
+SYSTEM_PROMPT = """You are Alex, an outdoor gear reviewer who has personally tested camping and hiking equipment for 8 years. You write for real people making real purchasing decisions.
 
-STRICT RULES:
-- Never use these words: comprehensive, delve, tapestry, whimsical, bustling, seamlessly,
-  furthermore, in conclusion, it's worth noting, it is important to note, dive deep,
-  game-changer, leverage, utilize, paradigm, synergy, holistic, multifaceted, robust
-- No generic intros like "In today's world..." or "Are you looking for..."
-- Lead with the most useful information immediately
-- Use specific numbers, weights, dimensions, prices where relevant
-- Affiliate link placeholders: [COUPANG_LINK:제품명] or [AMAZON_LINK:KEYWORD]
-- Output clean HTML only (no markdown, no code fences, no meta-commentary)
-- Use proper HTML tags: <h1>, <h2>, <h3>, <p>, <ul>, <li>, <strong>, <table>, <tr>, <th>, <td>
-- Do NOT include <html>, <head>, <body> tags — body content only
-- NEVER use markdown link syntax [text](url) — always use <a href="url">text</a> instead
-- All links must be proper HTML anchor tags with target="_blank" rel="nofollow"
-- ONLY write about products provided in the "Verified Products" section — do NOT invent products"""
+YOUR WRITING STYLE:
+- Start mid-thought like you're talking to a friend: "Honestly, after testing six chairs..." / "Here's the thing about cheap sleeping bags —"
+- Vary sentence length aggressively. Mix one-word reactions ("Impressive." "Nope.") with longer explanations.
+- Paragraphs: sometimes 1 sentence, sometimes 4. Never uniform 3-sentence blocks.
+- Every product review MUST include at least one real downside or limitation.
+- Use exact numbers from product data (weight, price, dimensions). Never round artificially.
+- Use contractions, dashes, and em-dashes naturally.
+- No filler openers whatsoever.
+
+BANNED WORDS — presence triggers full rewrite:
+comprehensive, delve, tapestry, whimsical, bustling, seamlessly, furthermore,
+in conclusion, it's worth noting, it is important to note, dive deep, game-changer,
+leverage, utilize, paradigm, synergy, holistic, multifaceted, robust, boasts,
+testament, meticulous, navigate, realm, stands out, look no further
+
+SEO REQUIREMENTS:
+- Target keyword must appear naturally in: h1, first paragraph, one h2, final paragraph
+- Minimum 1500 words (EN) / 2000 characters (KO)
+- Include "Last updated: [current month year]" as a small note near the top
+- End with a FAQ section (5 real questions people search for)
+- After the FAQ, append JSON-LD schema — format exactly:
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Q?","acceptedAnswer":{"@type":"Answer","text":"A."}},...]}</script>
+- First line of output must be: <!-- META: [155-char description with keyword] -->
+
+OUTPUT:
+- Clean HTML only. No markdown, no code fences, no commentary.
+- Tags allowed: h1 h2 h3 p ul li strong em table tr th td a small
+- No html/head/body wrapper tags
+- Links: <a href="url" target="_blank" rel="nofollow">text</a>
+- Affiliate: [AMAZON_LINK:keyword] or [COUPANG_LINK:제품명]
+- ONLY use products listed in Verified Products — never invent products"""
+
+SYSTEM_PROMPT_KO = """당신은 8년간 캠핑·아웃도어 용품을 직접 사용해온 리뷰어 '이준혁'입니다. 실제 구매자를 위해 씁니다.
+
+글쓰기 스타일:
+- 친구한테 말하듯 시작: "솔직히 6개 써봤는데..." / "싸구려 침낭 문제가 뭔지 알아?"
+- 문장 길이를 들쑥날쑥하게. 한 단어 반응("별로." "강추.")과 긴 설명 섞기.
+- 문단 크기도 불규칙하게. 1문장짜리도, 4문장짜리도 섞기.
+- 모든 제품 리뷰에 단점 1개 이상 반드시 포함.
+- 실제 크롤링된 가격·무게·수치 그대로 사용. 반올림 금지.
+- 구어체, 줄임말, 말줄임표 자연스럽게 사용.
+
+금지 표현 (있으면 전면 재작성):
+살펴보겠습니다, 알아보겠습니다, 중요합니다, 다양한, 최적의, 효과적인,
+포괄적인, 탁월한, 시너지, 패러다임, 원활하게, 그 밖에도, 결론적으로,
+주목할 만한, 최고의 선택, 빠질 수 없는
+
+SEO 요구사항:
+- 타겟 키워드: h1, 첫 문단, h2 하나, 마지막 문단에 자연스럽게 포함
+- 최소 2000자 이상
+- 상단 가까이 "최종 업데이트: [현재 연월]" 표시
+- 마지막에 FAQ 5개 (실제 사람들이 검색하는 질문)
+- FAQ 뒤에 JSON-LD 스키마:
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Q?","acceptedAnswer":{"@type":"Answer","text":"A."}},...]}</script>
+- 첫 줄: <!-- META: [키워드 포함 155자 이내 메타 디스크립션] -->
+- 쿠팡 파트너스 필수 문구: "이 포스팅은 쿠팡 파트너스 활동의 일환으로 수수료를 제공받습니다"
+
+출력:
+- 순수 HTML만. 마크다운 없음.
+- 허용 태그: h1 h2 h3 p ul li strong em table tr th td a small
+- html/head/body 래퍼 없음
+- 링크: <a href="url" target="_blank" rel="nofollow">텍스트</a>
+- 제휴: [COUPANG_LINK:제품명]
+- Verified Products에 있는 제품만 — 제품 창작 절대 금지"""
 
 
 # ─── Step 1: 상품 조사 (SerpAPI) ──────────────────────────────────────────────
@@ -264,99 +313,123 @@ def _build_user_prompt(keyword: str, gap_data: dict, language: str,
             )
     reference_block = "\n\n".join(ref_lines) if ref_lines else "  (없음)"
 
+    current_year  = datetime.date.today().year
+    current_month = datetime.date.today().strftime("%B %Y")   # e.g. "April 2026"
+
     if language == "ko":
-        length_instruction = f"최소 {config.MIN_CHAR_COUNT_KO}자 (한국어)"
-        lang_note = (
-            "한국어로 작성. 자연스러운 구어체 사용. "
-            "금지 표현: '살펴보겠습니다', '알아보겠습니다', '중요합니다', "
-            "'다양한', '최적의', '효과적인' 같은 AI 티나는 표현 사용 금지. "
-            "출력은 HTML만. 마크다운 사용 금지."
-        )
-        affiliate_note = (
-            "쿠팡 링크 플레이스홀더: [COUPANG_LINK:제품명] 형식으로 삽입. "
-            "Verified Products에 있는 제품만 리뷰할 것."
-        )
+        current_month_ko = datetime.date.today().strftime("%Y년 %-m월") if hasattr(datetime.date.today(), 'strftime') else f"{datetime.date.today().year}년 {datetime.date.today().month}월"
         structure = f"""
-<h1>제목 (키워드 포함, 클릭하고 싶은 제목)</h1>
+<!-- META: {keyword} 직접 써본 후기. 가격·스펙 실시간 비교 {current_year}년 최신 업데이트. -->
 
-<h2>한 줄 결론</h2>
-(150-200자: "{keyword}" 검색한 사람이 실제로 원하는 답을 바로 제공)
+<small>최종 업데이트: {current_year}년 {datetime.date.today().month}월 | 직접 사용 리뷰</small>
 
-<h2>한눈에 보는 추천 목록</h2>
-(Verified Products 기반 <table> — 제품명, 가격대, 특징, 추천대상 포함)
+<h1>{keyword} 추천 (클릭 유발 제목 — 키워드 자연 포함)</h1>
 
-<h2>제품별 상세 리뷰</h2>
-(각 제품당 150-200자: 실제 스펙 수치 사용, [COUPANG_LINK:제품명] 버튼 포함)
+<h2>한 줄 결론 — {keyword} 뭐 사야 해?</h2>
+(2-3문장: 검색한 사람이 진짜 원하는 답 바로 제공. AI 냄새 금지.)
 
-<h2>구매 전 꼭 확인할 것</h2>
-(400자: 실제로 중요한 기준 4-5가지, 불필요한 내용 제외)
+<h2>한눈에 비교</h2>
+(Verified Products 기반 <table> — 제품명, 실제가격, 무게/크기, 추천대상, 단점 1줄)
+
+<h2>제품별 솔직 리뷰</h2>
+(각 제품: 실제 스펙 수치, 장점 2개, 단점 1개 이상, [COUPANG_LINK:제품명] 버튼)
+
+<h2>{keyword} 고를 때 진짜 중요한 것</h2>
+(4-5가지 기준. 광고 문구 아닌 실용적 기준만.)
 
 <h2>자주 묻는 질문</h2>
-(실제 검색자들이 궁금해하는 질문 4-5개, 직접적으로 답변)
+(5개: People Also Ask 형식 실제 검색 질문 + 직접적 답변)
+(뒤에 FAQPage JSON-LD schema 추가)
 
-<h2>최종 추천</h2>
-(100자: 가장 강력한 제품 1개 추천 이유 명시, [COUPANG_LINK:제품명] 포함)"""
-    else:
-        length_instruction = f"Minimum {config.MIN_WORD_COUNT_EN} words. Each section must be thorough — no thin content."
-        lang_note = "Write in English. American tone, direct and specific."
-        affiliate_note = (
-            "Amazon link placeholder: [AMAZON_LINK:KEYWORD] — include naturally. "
-            "Only review products listed in Verified Products."
-        )
-        structure = f"""
-<h1>Title (include keyword, make it click-worthy)</h1>
+<h2>최종 추천 — {keyword} 이거 사세요</h2>
+(1개 강추 + 이유 + [COUPANG_LINK:제품명])
 
-<h2>The Quick Answer</h2>
-(150-200 words: direct answer to what someone searching "{keyword}" wants)
+<hr>
+<p><small>이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</small></p>"""
 
-<h2>Top Picks at a Glance</h2>
-(quick-reference <table> from Verified Products — include [AMAZON_LINK:{keyword}])
+        return f"""다음 키워드로 SEO 글을 작성하세요: "{keyword}"
 
-<h2>In-Depth Reviews</h2>
-(each product: real specs — dimensions, weight, materials, price. [AMAZON_LINK:product])
+작성 날짜: {datetime.date.today()} ({current_year}년 기준 최신 정보)
+최소 2000자. 구어체. AI 표현 일체 금지.
 
-<h2>Buying Guide: What Actually Matters</h2>
-(4-5 criteria that separate good from bad, no fluff)
-
-<h2>Frequently Asked Questions</h2>
-(4-5 questions real searchers ask, answered directly)
-
-<h2>Our Pick</h2>
-(single strongest recommendation with specific reason, include [AMAZON_LINK:{keyword}])"""
-
-    current_year = datetime.date.today().year
-
-    return f"""Write a complete SEO article targeting: "{keyword}"
-
-Context:
-- Current year: {current_year}
-- IMPORTANT: This article is for {current_year}. All recommendations, prices, and info must reflect {current_year} reality. Do NOT reference outdated info.
-- Gap score: {gap_score}/100 (gap opens ~{gap_date})
-- Decaying competitor: {competitor_url} (decay: {decay_prob:.0%})
-- Language: {lang_note}
-- Length: {length_instruction}
-- {affiliate_note}
-
-Verified Products — scraped in real-time today ({datetime.date.today()}).
-Use ONLY these products. Use the Features bullets for accurate specs:
+Verified Products (오늘 {datetime.date.today()} 실시간 크롤링 — 이 제품만 사용):
 {product_block}
 
-Reference Sources — live-crawled competitor/review pages (use for accurate specs & context):
+참고 자료 (실시간 크롤링된 경쟁사 리뷰 — 스펙 정확도 참고용):
+{reference_block}
+
+필수 HTML 구조:
+{structure}
+
+첫 줄은 반드시 <!-- META: ... --> 로 시작. 그 다음 <small>업데이트 날짜</small>. 그 다음 <h1>. HTML만 출력."""
+
+    else:
+        structure = f"""
+<!-- META: [155-char: include "{keyword}", year {current_year}, specific benefit] -->
+
+<small>Last updated: {current_month} — tested hands-on</small>
+
+<h1>[Keyword-rich title that makes someone click — not generic]</h1>
+
+<h2>The Short Answer</h2>
+(2-3 sentences: exactly what someone searching "{keyword}" needs to know RIGHT NOW)
+
+<h2>Top {keyword.title()} — Quick Comparison</h2>
+(table from Verified Products: name, price, weight/size, best for, one downside)
+
+<h2>Honest Reviews</h2>
+(per product: real specs, 2 pros, 1+ con, [AMAZON_LINK:product name])
+
+<h2>What Actually Matters When Choosing</h2>
+(4-5 practical criteria — no marketing fluff)
+
+<h2>Frequently Asked Questions</h2>
+(5 real People Also Ask questions + direct answers)
+(follow immediately with FAQPage JSON-LD schema)
+
+<h2>Bottom Line</h2>
+(1 strongest pick + specific reason + [AMAZON_LINK:{keyword}])"""
+
+        return f"""Write a complete SEO article for: "{keyword}"
+
+Today's date: {datetime.date.today()} — write for {current_year}. All specs/prices from today's crawl.
+Minimum 1500 words. Human voice. Zero AI-sounding phrases.
+
+Verified Products (live-scraped {datetime.date.today()} — use ONLY these):
+{product_block}
+
+Reference Sources (live-crawled review pages — use for real specs):
 {reference_block}
 
 Required HTML structure:
 {structure}
 
-Start directly with <h1>. Output HTML only. No preamble."""
+First line MUST be <!-- META: ... -->. Then <small>Last updated</small>. Then <h1>. HTML only."""
 
 
 # ─── Step 3: Claude API 호출 ──────────────────────────────────────────────────
+
+def _extract_meta(content: str) -> tuple[str, str]:
+    """
+    첫 줄의 <!-- META: ... --> 주석에서 메타 디스크립션 추출.
+    Returns (meta_description, content_without_meta_comment)
+    """
+    meta = ""
+    lines = content.split("\n", 1)
+    first = lines[0].strip()
+    m = re.match(r"<!--\s*META:\s*(.+?)\s*-->", first)
+    if m:
+        meta = m.group(1)[:155]
+        content = lines[1] if len(lines) > 1 else ""
+    return meta, content.strip()
+
 
 def _claude_post(keyword: str, gap_data: dict, language: str,
                   products: list[dict]) -> str:
     import anthropic
 
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    sys_prompt = SYSTEM_PROMPT_KO if language == "ko" else SYSTEM_PROMPT
+    client     = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     user_prompt = _build_user_prompt(keyword, gap_data, language, products)
 
     logger.info("Calling Claude API for '%s' (%s) with %d verified products",
@@ -364,7 +437,7 @@ def _claude_post(keyword: str, gap_data: dict, language: str,
     message = client.messages.create(
         model=config.CLAUDE_MODEL,
         max_tokens=8192,
-        system=SYSTEM_PROMPT,
+        system=sys_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
     return message.content[0].text
@@ -485,6 +558,9 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
         config.MAX_CLAUDE_CALLS_PER_RUN -= 1
 
     # ── Step 4: 후처리 ─────────────────────────────────────────────
+    # 메타 디스크립션 추출 (첫 줄 <!-- META: ... --> 주석)
+    meta_description, content = _extract_meta(content)
+
     content = _inject_affiliate_links(content, language)
     content = _convert_markdown_links(content)
 
@@ -499,7 +575,7 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
     warnings = _check_ai_signatures(content)
 
     word_count = len(content.split())
-    slug = keyword.lower().replace(" ", "-")
+    slug = re.sub(r"[^\w가-힣-]", "-", keyword.lower()).strip("-")
     filename = f"{slug}_{language}_{datetime.date.today()}.html"
     file_path = config.POSTS_DIR / filename
 
@@ -513,6 +589,7 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
         "keyword":               keyword,
         "language":              language,
         "content":               content,
+        "meta_description":      meta_description,
         "word_count":            word_count,
         "verified_products":     [p["name"] for p in products],
         "ai_signature_warnings": warnings,
