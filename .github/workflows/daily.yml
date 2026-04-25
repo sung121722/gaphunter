@@ -82,6 +82,7 @@ jobs:
         run: python scripts/run_ko.py
 
       - name: 이메일 알림 발송
+        continue-on-error: true          # 이메일 실패해도 commit은 실행
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.naver.com
@@ -95,6 +96,7 @@ jobs:
           html_body: file:///tmp/email_body.html
 
       - name: Commit posts & wiki
+        if: always()                     # 이메일 실패해도 반드시 실행
         run: |
           git config user.name  "GapHunter Bot"
           git config user.email "bot@gaphunter.com"
