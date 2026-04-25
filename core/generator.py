@@ -557,6 +557,44 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
         content = _claude_post(keyword, gap_data, language, products)
         config.MAX_CLAUDE_CALLS_PER_RUN -= 1
 
+        # ── 길이 부족 시 1회 재시도 ───────────────────────────────────
+        min_len = config.MIN_CHAR_COUNT_KO if language == "ko" else config.MIN_WORD_COUNT_EN
+        actual  = len(content) if language == "ko" else len(content.split())
+        unit    = "자" if language == "ko" else "단어"
+
+        if actual < min_len and config.MAX_CLAUDE_CALLS_PER_RUN > 0:
+            logger.warning(
+                "Content too short for '%s': %d%s (min %d) — retrying with stricter prompt",
+                keyword, actual, unit, min_len
+            )
+            print(f"  [경고] 글 길이 부족 ({actual}{unit} < {min_len}{unit}) — 재생성 중...")
+
+            # 재시도 프롬프트에 길이 위반 명시
+            retry_note = (
+                f"\n\nCRITICAL: Previous attempt was only {actual} {unit}. "
+                f"You MUST write at least {min_len} {'characters' if language == 'ko' else 'words'}. "
+                f"Expand every section. Do not skip any part of the required structure."
+            ) if language == "en" else (
+                f"\n\n[필수] 이전 출력이 {actual}자밖에 안 됐습니다. "
+                f"반드시 {min_len}자 이상 작성하세요. 모든 섹션을 충분히 확장하세요."
+            )
+
+            import anthropic as _ant
+            sys_prompt = SYSTEM_PROMPT_KO if language == "ko" else SYSTEM_PROMPT
+            client2    = _ant.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+            user_prompt2 = _build_user_prompt(keyword, gap_data, language, products) + retry_note
+            msg2 = client2.messages.create(
+                model=config.CLAUDE_MODEL,
+                max_tokens=8192,
+                system=sys_prompt,
+                messages=[{"role": "user", "content": user_prompt2}],
+            )
+            content = msg2.content[0].text
+            config.MAX_CLAUDE_CALLS_PER_RUN -= 1
+
+            actual2 = len(content) if language == "ko" else len(content.split())
+            print(f"  [재시도 결과] {actual2}{unit}")
+
     # ── Step 4: 후처리 ─────────────────────────────────────────────
     # 메타 디스크립션 추출 (첫 줄 <!-- META: ... --> 주석)
     meta_description, content = _extract_meta(content)
