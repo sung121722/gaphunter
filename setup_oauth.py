@@ -10,17 +10,22 @@ Google Cloud Console에서 OAuth2 클라이언트 ID 생성 후 실행.
 """
 
 import sys
+import os
 import webbrowser
 import urllib.parse
 import http.server
 import threading
 import httpx
+from pathlib import Path
+from dotenv import load_dotenv
 
-# ── 1. Google Cloud Console에서 복사 ──────────────────────────────────────────
-# https://console.cloud.google.com → API 및 서비스 → 사용자 인증 정보
-# → OAuth 2.0 클라이언트 ID 생성 (데스크톱 앱)
-CLIENT_ID     = input("GOOGLE_CLIENT_ID 입력: ").strip()
-CLIENT_SECRET = input("GOOGLE_CLIENT_SECRET 입력: ").strip()
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
+
+# ── 1. .env에서 자동 로드 ──────────────────────────────────────────────────────
+CLIENT_ID     = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+print(f"CLIENT_ID: {CLIENT_ID[:30]}...")
+print(f"CLIENT_SECRET: {CLIENT_SECRET[:10]}...")
 
 REDIRECT_URI  = "http://localhost:8080"
 SCOPE         = "https://www.googleapis.com/auth/blogger"
@@ -49,7 +54,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         auth_code = params.get("code", [None])[0]
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"<h2>인증 완료! 이 창을 닫으세요.</h2>")
+        self.wfile.write(b"<h2>Auth complete! You may close this window.</h2>")
     def log_message(self, *args):
         pass
 
