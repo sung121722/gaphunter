@@ -38,7 +38,7 @@ def publish(file_path: str):
     m = re.search(r"<h1[^>]*>(.*?)</h1>", content, re.DOTALL)
     title = m.group(1).strip() if m else Path(file_path).stem
 
-    print(f"발행 중: {title}")
+    print(f"[pub] {title[:60].encode('ascii','replace').decode()}")
     token = get_access_token()
 
     resp = httpx.post(
@@ -49,9 +49,9 @@ def publish(file_path: str):
     )
     data = resp.json()
     if "url" in data:
-        print(f"[OK] 발행 완료: {data['url']}")
+        print(f"[OK] {data['url']}")
     else:
-        print(f"[FAIL] 실패: {data}")
+        print(f"[FAIL] {data}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

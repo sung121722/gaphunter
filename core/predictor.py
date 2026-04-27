@@ -134,14 +134,18 @@ def predict_demand(trend_series: list[dict], horizon: int = 30) -> dict:
         }
     """
     if not trend_series:
-        logger.warning("predict_demand: empty trend_series")
+        # Long-tail keywords often have no pytrends data (too specific to measure).
+        # Use a slight positive default (0.15): deliberate keyword selection implies
+        # growing demand, not flat. Better prior than assuming 0.
+        logger.warning("predict_demand: empty trend_series — using growth_rate=0.15 default")
+        mid = 50.0
         return {
-            "forecast": [0.0] * horizon,
-            "confidence_lower": [0.0] * horizon,
-            "confidence_upper": [0.0] * horizon,
-            "slope": 0.0,
-            "growth_rate": 0.0,
-            "model": "empty",
+            "forecast": [mid] * horizon,
+            "confidence_lower": [mid * 0.8] * horizon,
+            "confidence_upper": [mid * 1.2] * horizon,
+            "slope": 0.5,
+            "growth_rate": 0.15,
+            "model": "default_positive",
         }
 
     x, values = _series_to_array(trend_series)
@@ -179,11 +183,13 @@ def predict_decay(serp_history: list[dict]) -> float:
     ranks = [row.get("rank", 10) for row in serp_history if "rank" in row]
 
     if len(ranks) < 2:
-        # Single snapshot — use rank position as a proxy
-        # Ranks 1-3 are sticky; 7+ are volatile
-        rank = ranks[0] if ranks else 10
-        base_prob = 0.2 + (rank - 1) * 0.06
-        return float(np.clip(base_prob, 0.1, 0.9))
+        # Single snapshot — rank-based decay estimate.
+        # Revised: even top-ranked content has ~40% decay chance because
+        # most established pages are 1-3 years old and aging continuously.
+        # rank 1 = 0.40, rank 5 = 0.56, rank 10 = 0.76
+        rank = ranks[0] if ranks else 5
+        base_prob = 0.40 + (rank - 1) * 0.04
+        return float(np.clip(base_prob, 0.20, 0.90))
 
     ranks_arr = np.array(ranks, dtype=float)
     x = np.arange(len(ranks_arr)).reshape(-1, 1)

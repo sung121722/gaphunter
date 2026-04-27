@@ -65,12 +65,35 @@ def _competition_gap_score(competitors: list[dict]) -> float:
     return float(np.clip(thin_score + age_score + density_score, 0.0, 1.0))
 
 
-def _timing_advantage_score(forecast: list[float]) -> float:
+_SEASONAL_TIMING = {
+    # tag → months with high timing advantage (pre-peak)
+    "camping":   [3, 4, 5, 6],
+    "hiking":    [3, 4, 5, 6],
+    "backpack":  [3, 4, 5, 6],
+    "trekking":  [3, 4, 5, 6],
+    "hammock":   [4, 5, 6],
+    "water filt": [4, 5, 6, 7],
+    "sleeping":  [3, 4, 10, 11],
+    "winter":    [10, 11, 12],
+}
+
+
+def _timing_advantage_score(forecast: list[float], keyword: str = "") -> float:
     """
     Score (0~1) based on forecast trajectory.
     If demand is rising in the next 30 days, timing is good.
+    Falls back to seasonal heuristic when no forecast data is available.
     """
-    if not forecast or len(forecast) < 2:
+    if not forecast or len(forecast) < 2 or all(v == forecast[0] for v in forecast):
+        # No real forecast — use seasonal timing heuristic
+        if keyword:
+            month = datetime.date.today().month
+            kw_lower = keyword.lower()
+            for tag, months in _SEASONAL_TIMING.items():
+                if tag in kw_lower and month in months:
+                    # Earlier in the window = more time to capture traffic
+                    idx = months.index(month)
+                    return round(0.85 - idx * 0.08, 2)
         return 0.5
 
     arr = np.array(forecast)
@@ -140,7 +163,7 @@ def score_gap(keyword: str, predictions: dict) -> dict:
     s_demand   = _demand_growth_score(growth_rate)
     s_decay    = decay_prob                          # already 0~1
     s_comp     = _competition_gap_score(comps)
-    s_timing   = _timing_advantage_score(forecast)
+    s_timing   = _timing_advantage_score(forecast, keyword)
 
     # Weighted sum → 0~100 integer
     raw = (
