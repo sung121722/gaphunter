@@ -30,8 +30,8 @@ DRY_RUN_MODE = os.getenv("DRY_RUN_MODE", "true").lower() in ("true", "1", "yes")
 
 # ─── Gap Score Thresholds ─────────────────────────────────────────────────────
 GAP_SCORE_URGENT = 80   # generate content immediately
-GAP_SCORE_HIGH   = 45   # generate within 7 days (캠핑 시즌 한시적 하향)
-GAP_SCORE_MEDIUM = 40   # add to queue
+GAP_SCORE_HIGH   = 60   # generate within 7 days  ← 발행 최소 기준
+GAP_SCORE_MEDIUM = 40   # add to queue (모니터링)
 GAP_SCORE_LOW    = 0    # monitor only
 
 # ─── pytrends Settings ────────────────────────────────────────────────────────

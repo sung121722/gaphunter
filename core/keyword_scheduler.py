@@ -143,15 +143,15 @@ def _pytrends_growth_rates(keywords: list[str], geo: str) -> dict[str, float]:
     return growth
 
 
-def pick_keyword(language: str) -> str:
+def pick_top_keywords(language: str, n: int = 3) -> list[str]:
     """
-    오늘 발행할 키워드 1개 선택.
+    트렌드 기반으로 상위 N개 키워드 후보를 반환 (gap_score 평가 전 1차 필터).
 
     전략:
       1. 최근 14일 내 발행된 키워드 제외
-      2. 남은 키워드에 대해 pytrends 3개월 트렌드 조회
-      3. 성장률 + 계절 보너스 합산 → 점수 최고 키워드 선택
-      4. pytrends 실패 시 첫 번째 미발행 키워드로 폴백
+      2. pytrends 3개월 트렌드 → 성장률 + 계절 보너스 합산
+      3. 점수 내림차순으로 상위 N개 반환
+      4. pytrends 실패 시 리스트 앞쪽부터 N개 반환
     """
     keywords = _load_keywords(language)
     if not keywords:
@@ -161,40 +161,35 @@ def pick_keyword(language: str) -> str:
     available = [kw for kw in keywords if kw.lower() not in recent]
 
     if not available:
-        # 전부 발행됨 → 처음부터 재순환
         available = keywords
         print(f"  [키워드] 전체 순환 완료 — 처음부터 재시작")
 
-    # ── pytrends 실시간 트렌드 스코어링 ──────────────────────────────
     geo = "KR" if language == "ko" else "US"
 
-    if not config.DRY_RUN_MODE:
-        print(f"  [키워드 스코어링] {len(available)}개 후보 트렌드 분석 중...")
+    if not config.DRY_RUN_MODE and len(available) > 1:
+        print(f"  [1차 필터] {len(available)}개 후보 트렌드 스코어링 중...")
         growth_rates = _pytrends_growth_rates(available, geo)
 
         scored = []
         for kw in available:
             g = growth_rates.get(kw, 0.0)
             s = _seasonal_bonus(kw)
-            total = g + s
-            scored.append((kw, total, g, s))
-            logger.info("  %s | growth=%.2f season=%.2f total=%.2f", kw, g, s, total)
+            scored.append((kw, g + s, g, s))
 
         scored.sort(key=lambda x: x[1], reverse=True)
 
-        # 상위 3개 출력
-        print(f"  [키워드 순위 TOP3]")
-        for kw, total, g, s in scored[:3]:
-            print(f"    {kw!r:40s}  growth={g:+.2f}  season={s:.2f}  total={total:+.2f}")
+        print(f"  [트렌드 TOP{min(n, len(scored))}]")
+        for kw, total, g, s in scored[:n]:
+            print(f"    {kw!r:45s}  growth={g:+.2f}  season={s:.2f}  합계={total:+.2f}")
 
-        chosen, score, g, s = scored[0]
-        print(f"  [선택] '{chosen}'  (growth={g:+.2f}, season={s:.2f}, score={score:+.2f})")
+        return [kw for kw, *_ in scored[:n]]
     else:
-        # DRY RUN — 그냥 첫 번째
-        chosen = available[0]
-        print(f"  [DRY] 키워드 선택: '{chosen}'")
+        return available[:n]
 
-    return chosen
+
+# 하위 호환 — 단일 키워드 반환 (DRY RUN / 레거시 용도)
+def pick_keyword(language: str) -> str:
+    return pick_top_keywords(language, n=1)[0]
 
 
 def log_keyword(keyword: str, language: str, file_path: str,
