@@ -1,0 +1,79 @@
+name: Security Review
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '11 1 * * 1'   # 매주 월요일 01:11 UTC (10:11 KST)
+  workflow_dispatch:
+
+jobs:
+  bandit:
+    name: Python 보안 스캔 (bandit)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install bandit
+        run: pip install bandit[toml]
+
+      - name: Run bandit
+        run: |
+          bandit -r . \
+            --exclude ./.git,./posts,./raw,./wiki \
+            --severity-level medium \
+            --confidence-level medium \
+            -f txt \
+            -o bandit-report.txt \
+            || true   # 경고가 있어도 워크플로 실패 처리 안 함
+
+      - name: Print report
+        run: cat bandit-report.txt
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: bandit-report.txt
+          retention-days: 30
+
+  secrets-scan:
+    name: 시크릿 노출 검사
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 전체 히스토리 (과거 커밋 포함)
+
+      - name: Check for hardcoded secrets patterns
+        run: |
+          echo "=== 하드코딩 시크릿 패턴 검사 ==="
+          FOUND=0
+
+          # API 키 패턴
+          if grep -rn \
+            --include="*.py" --include="*.yml" --include="*.json" \
+            --exclude-dir=".git" --exclude-dir="posts" \
+            -E "(api_key|apikey|secret|password|token)\s*=\s*['\"][a-zA-Z0-9_\-]{8,}" \
+            . 2>/dev/null | grep -v ".env" | grep -v "os.getenv" | grep -v "os.environ" | grep -v "secrets\." | grep -v "#"; then
+            echo "⚠️  잠재적 하드코딩 시크릿 발견"
+            FOUND=1
+          fi
+
+          # .env 파일이 실수로 커밋됐는지 확인
+          if git log --all --name-only --format="" | grep -q "^\.env$"; then
+            echo "⚠️  .env 파일이 git 히스토리에 존재합니다!"
+            FOUND=1
+          fi
+
+          if [ $FOUND -eq 0 ]; then
+            echo "✅ 시크릿 패턴 없음"
+          fi
