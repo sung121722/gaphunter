@@ -371,7 +371,7 @@ def crawl_competitor_page(url: str) -> dict:
         logger.warning("Failed to crawl %s: %s", url, e)
         return {"url": url, "error": str(e)}
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    soup = BeautifulSoup(resp.text, "html.parser")
 
     title = soup.title.string.strip() if soup.title else ""
 

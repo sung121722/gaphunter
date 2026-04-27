@@ -115,7 +115,7 @@ def _crawl_product_details(url: str, language: str) -> dict:
             return {}
 
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(resp.text, "lxml")
+        soup = BeautifulSoup(resp.text, "html.parser")
 
         result = {}
 
