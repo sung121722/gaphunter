@@ -58,6 +58,19 @@ if best_score < MIN_SCORE:
     print(f"[KO] SKIP — gap_score {best_score} < 기준 {MIN_SCORE}")
     print(f"[KO] 오늘은 빈자리가 없습니다. 내일 다시 확인합니다.")
 
+    # 이메일 step이 파일을 요구하므로 스킵 안내 HTML 생성
+    with open("/tmp/email_body.html", "w", encoding="utf-8") as f:
+        f.write(f"""<html>
+<body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;">
+<h2 style="color:#888;">GapHunter - 오늘 발행 없음</h2>
+<p style="background:#f5f5f5;padding:12px;border-radius:6px;">
+  최고 gap_score: <strong>{best_score}/100</strong> (기준: {MIN_SCORE})<br>
+  후보 키워드: {best_keyword}<br><br>
+  오늘은 빈자리가 없습니다. 내일 다시 확인합니다.
+</p>
+<p style="color:#999;font-size:12px;">GapHunter Bot</p>
+</body></html>""")
+
     output_file = os.environ.get("GITHUB_OUTPUT", "/tmp/ko_output.txt")
     with open(output_file, "a") as f:
         f.write(f"keyword={best_keyword}\n")
