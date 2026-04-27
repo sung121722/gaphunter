@@ -512,8 +512,25 @@ def _check_ai_signatures(text: str) -> list[str]:
     return found
 
 
+def _fix_nested_links(text: str) -> str:
+    """
+    Claude가 이미 <a href="..."> 태그를 생성했는데
+    _inject_affiliate_links가 또 감싸서 이중 중첩이 되는 경우 수정.
+    패턴: href="<a href="URL" ...>Buy on Amazon</a>"  → href="URL"
+    """
+    # href 안에 <a> 태그가 중첩된 경우 제거
+    text = re.sub(
+        r'href="<a href="([^"]+)"[^>]*>[^<]*</a>"',
+        r'href="\1"',
+        text,
+    )
+    return text
+
+
 def _inject_affiliate_links(text: str, language: str) -> str:
-    """Replace affiliate placeholders with real HTML anchor tags."""
+    """Replace affiliate placeholders with real HTML anchor tags.
+    이중 중첩 방지: Claude가 이미 <a> 태그를 넣은 경우 플레이스홀더만 교체.
+    """
     if language == "ko":
         pid = config.COUPANG_PARTNERS_ID or "AF6344014"
         def replace_coupang(match):
@@ -526,9 +543,8 @@ def _inject_affiliate_links(text: str, language: str) -> str:
                 f'쿠팡에서 보기 →</a>'
             )
         text = re.sub(r"\[COUPANG_LINK:([^\]]+)\]", replace_coupang, text)
-        # 혹시 AMAZON_LINK 플레이스홀더가 있으면 쿠팡으로 대체
         text = re.sub(r"\[AMAZON_LINK:([^\]]+)\]", replace_coupang, text)
-        return text
+        return _fix_nested_links(text)
 
     # English — Amazon Associates
     tag = config.AMAZON_ASSOCIATES_ID or ""
@@ -538,7 +554,7 @@ def _inject_affiliate_links(text: str, language: str) -> str:
         return f'<a href="{url}" target="_blank" rel="nofollow">Buy on Amazon</a>'
     text = re.sub(r"\[AMAZON_LINK:([^\]]+)\]", replace_amazon, text)
     text = re.sub(r"\[COUPANG_LINK:([^\]]+)\]", replace_amazon, text)
-    return text
+    return _fix_nested_links(text)
 
 
 def _convert_markdown_links(text: str) -> str:
