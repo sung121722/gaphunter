@@ -106,6 +106,17 @@ py config.py                  # 설정 확인
 
 ---
 
+## Vibe Coding 훅 (이 프로젝트 전용)
+
+- **[3-STRIKE]** 같은 에러 3번 → 코딩 중단, 새 접근법 제안
+- **[ZERO-TOUCH]** 파이프라인은 항상 headless 자동화 — UI 클릭 의존 설계 금지
+- **[STRICT SEMANTICS]** HTML 생성 시 `<article>`, `<main>`, `<section>` 강제 사용
+- **[STATE BEFORE UI]** 데이터 스키마·API 확정 전 UI 작업 금지
+- **[AUTO-INGEST]** 기능 완료·버그 수정 후 → `wiki/` 또는 이 파일에 자동 문서화
+- **[QUERY FIRST]** 새 코드 작성 전 `AGENTS.md` / `CLAUDE.md` / `wiki/` 먼저 읽기
+
+---
+
 ## 금지 사항
 
 - `.env` 파일 커밋 금지
