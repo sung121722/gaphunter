@@ -21,10 +21,10 @@ from core.generator  import generate_post
 
 LANG       = "ko"
 GEO        = "KR"
-MIN_SCORE  = config.GAP_SCORE_HIGH     # 60 — 이 이상만 생성 (빈자리 선점 기준)
+MIN_SCORE  = 55   # 55+ 이면 생성 (SERP 변동으로 60 경계선 불안정 해소)
 
-# ── 1단계: 트렌드 기반 후보 3개 선정 ──────────────────────────────────────────
-candidates = pick_top_keywords(LANG, n=3)
+# ── 1단계: 트렌드 기반 후보 5개 선정 (3→5로 확대) ────────────────────────────
+candidates = pick_top_keywords(LANG, n=5)
 print(f"\n[KO] 후보 키워드: {candidates}")
 
 # ── 2단계: 각 후보 전체 분석 → 최고 gap_score 찾기 ──────────────────────────

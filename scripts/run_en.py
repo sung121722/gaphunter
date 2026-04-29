@@ -2,11 +2,11 @@
 EN pipeline: 갭 스코어 기반 선별 발행
 
 흐름:
-  1. 트렌드 상위 3개 키워드 후보 선정
+  1. 트렌드 상위 5개 키워드 후보 선정 (3→5로 확대)
   2. 각 키워드 전체 분석 (collect → predict → score)
   3. gap_score 가장 높은 키워드 선택
-  4. gap_score >= GAP_SCORE_MEDIUM(40)이어야만 발행
-  5. 기준 미달 시 오늘은 스킵 — 아무 글이나 올리지 않는다
+  4. gap_score >= 55 이어야만 발행 (60 이상: 빈자리 선점, 55~59: 선제 선점)
+  5. 기준 미달 시 오늘은 스킵
 """
 import sys
 import os
@@ -20,12 +20,12 @@ from core.scorer     import score_gap
 from core.generator  import generate_post
 from core.publisher  import publish
 
-LANG       = "en"
-GEO        = "US"
-MIN_SCORE  = config.GAP_SCORE_HIGH     # 60 — 이 이상만 발행 (빈자리 선점 기준)
+LANG      = "en"
+GEO       = "US"
+MIN_SCORE = 55   # 55+ 이면 발행 (SERP 변동으로 60 경계선 불안정 해소)
 
-# ── 1단계: 트렌드 기반 후보 3개 선정 ──────────────────────────────────────────
-candidates = pick_top_keywords(LANG, n=3)
+# ── 1단계: 트렌드 기반 후보 5개 선정 ──────────────────────────────────────────
+candidates = pick_top_keywords(LANG, n=5)
 print(f"\n[EN] 후보 키워드: {candidates}")
 
 # ── 2단계: 각 후보 전체 분석 → 최고 gap_score 찾기 ──────────────────────────
@@ -52,6 +52,11 @@ for kw in candidates:
         best_snapshot = snapshot
         best_gap      = gap_result
 
+    # 이미 충분한 점수 → 나머지 생략 가능
+    if best_score >= config.GAP_SCORE_HIGH:
+        print(f"  → gap_score {best_score} 충분, 나머지 후보 생략")
+        break
+
 # ── 3단계: 기준 미달 시 스킵 ─────────────────────────────────────────────────
 print(f"\n[EN] 최고 gap_score: {best_score} ('{best_keyword}')")
 
@@ -68,8 +73,8 @@ if best_score < MIN_SCORE:
     sys.exit(0)
 
 # ── 4단계: 발행 결정 — 빈자리 선점 ──────────────────────────────────────────
-print(f"\n[EN] PUBLISH — '{best_keyword}'  gap_score={best_score}  "
-      f"action={best_gap['action']}")
+action_label = best_gap['action']
+print(f"\n[EN] PUBLISH — '{best_keyword}'  gap_score={best_score}  action={action_label}")
 print(f"  경쟁자 decay: {best_gap['decay_probability']:.0%}  "
       f"갭 예상: {best_gap['predicted_gap_date']}")
 
@@ -86,6 +91,10 @@ status   = pub.get("status", "error")
 post_url = pub.get("post_url", "")
 products = post_result.get("verified_products", [])
 
+if status == "error":
+    reason = pub.get("reason", "unknown")
+    print(f"[EN] 발행 실패: {reason[:200]}")
+
 log_keyword(best_keyword, LANG, post_result["file_path"], products, status)
 
 output_file = os.environ.get("GITHUB_OUTPUT", "/tmp/gh_output.txt")
@@ -96,5 +105,6 @@ with open(output_file, "a") as f:
     f.write(f"score={best_score}\n")
 
 print(f"\n[EN] 발행 완료: {status}")
-print(f"[EN] URL: {post_url}")
-print(f"[EN] gap_score: {best_score}  →  '{best_keyword}' 선점 성공")
+if post_url:
+    print(f"[EN] URL: {post_url}")
+print(f"[EN] gap_score: {best_score}  →  '{best_keyword}' 선점 완료")
