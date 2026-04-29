@@ -58,10 +58,10 @@ def pre_publish_check(content: str, language: str, tags: list[str]) -> dict:
     else:
         checks["has_disclosure"] = True
 
-    # 5. 태그 20개 확인
-    checks["tags_ready"] = len(tags) >= 20
+    # 5. 태그 최소 5개 확인 (Blogger 전송은 8개 이하로 별도 제한)
+    checks["tags_ready"] = len(tags) >= 5
     if not checks["tags_ready"]:
-        issues.append(f"태그 부족: {len(tags)}개 < 20개")
+        issues.append(f"태그 부족: {len(tags)}개 < 5개")
 
     passed = all(checks.values())
     return {
@@ -249,13 +249,14 @@ def publish_blogger(
 
     try:
         access_token = _get_blogger_access_token()
+        # Blogger API: labels 최대 8개 (초과 시 400 오류)
         resp = httpx.post(
             f"https://www.googleapis.com/blogger/v3/blogs/{blog_id}/posts/",
             headers={"Authorization": f"Bearer {access_token}"},
             json={
                 "title":   title,
                 "content": content,
-                "labels":  tags[:20],
+                "labels":  tags[:8],
             },
             timeout=30,
         )
@@ -270,7 +271,10 @@ def publish_blogger(
                 "published_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
         else:
-            return {"platform": "blogger", "status": "error", "reason": str(data)}
+            reason = str(data)
+            logger.error("Blogger API error: %s", reason)
+            print(f"  [Blogger 오류] {reason[:200]}")
+            return {"platform": "blogger", "status": "error", "reason": reason}
     except Exception as e:
         logger.error("Blogger publish failed: %s", e)
         return {"platform": "blogger", "status": "error", "reason": str(e)}
