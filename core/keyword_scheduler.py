@@ -184,7 +184,13 @@ def pick_top_keywords(language: str, n: int = 3) -> list[str]:
 
         return [kw for kw, *_ in scored[:n]]
     else:
-        return available[:n]
+        # pytrends 실패 시 → 계절 보너스 기준으로 정렬 (list 순서 대신)
+        scored_fallback = sorted(
+            available,
+            key=lambda kw: _seasonal_bonus(kw),
+            reverse=True,
+        )
+        return scored_fallback[:n]
 
 
 # 하위 호환 — 단일 키워드 반환 (DRY RUN / 레거시 용도)

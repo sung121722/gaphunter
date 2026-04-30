@@ -116,7 +116,50 @@ _timesfm_forecast = _foundation_forecast
 
 # ─── Public API ──────────────────────────────────────────────────────────────
 
-def predict_demand(trend_series: list[dict], horizon: int = 30) -> dict:
+# ─── Seasonal demand inference (pytrends 없을 때 폴백) ───────────────────────────
+_SEASONAL_DEMAND = {
+    # keyword fragment → (peak_months, off_months)
+    # pre-peak = high growth_rate, peak = moderate, off = low
+    "camping":    ([3, 4, 5, 6, 7, 8], [11, 12, 1]),
+    "hiking":     ([3, 4, 5, 6, 7, 8], [11, 12, 1]),
+    "backpack":   ([3, 4, 5, 6, 7, 8], [11, 12, 1]),
+    "hammock":    ([4, 5, 6, 7, 8],    [11, 12, 1, 2]),
+    "trekking":   ([3, 4, 5, 6, 7, 8], [11, 12, 1]),
+    "water filt": ([4, 5, 6, 7],       [11, 12, 1]),
+    "sleeping":   ([3, 4, 10, 11],     [6, 7, 8]),
+    "winter":     ([10, 11, 12, 1, 2], [5, 6, 7, 8]),
+    "heater":     ([10, 11, 12, 1],    [5, 6, 7, 8]),
+    "rain":       ([3, 4, 5, 9, 10],   [7, 8]),
+    "캠핑":        ([3, 4, 5, 6, 7, 8], [11, 12, 1]),
+    "등산":        ([3, 4, 5, 6, 7, 8], [11, 12, 1]),
+    "침낭":        ([3, 4, 10, 11],     [6, 7, 8]),
+    "해먹":        ([4, 5, 6, 7, 8],    [11, 12, 1, 2]),
+}
+
+
+def _seasonal_growth_rate(keyword: str) -> float:
+    """
+    pytrends 데이터 없을 때 키워드 계절성으로 growth_rate 추론.
+    pre-peak: 0.5, peak: 0.3, off-season: 0.05, unknown: 0.2
+    """
+    month = datetime.date.today().month
+    kw_lower = keyword.lower()
+    for tag, (peak_months, off_months) in _SEASONAL_DEMAND.items():
+        if tag in kw_lower:
+            if month in peak_months:
+                # 시즌 초반일수록 growth_rate 높음
+                idx = peak_months.index(month)
+                frac = 1.0 - (idx / len(peak_months))
+                return round(0.3 + frac * 0.3, 2)   # 0.30 ~ 0.60
+            elif month in off_months:
+                return 0.05
+            else:
+                return 0.20   # 중간 시즌
+    return 0.20   # 계절성 없는 키워드
+
+
+def predict_demand(trend_series: list[dict], horizon: int = 30,
+                   keyword: str = "") -> dict:
     """
     Predict future demand for the next `horizon` days/weeks.
 
@@ -133,19 +176,27 @@ def predict_demand(trend_series: list[dict], horizon: int = 30) -> dict:
             model: str,
         }
     """
-    if not trend_series:
-        # Long-tail keywords often have no pytrends data (too specific to measure).
-        # Use a slight positive default (0.15): deliberate keyword selection implies
-        # growing demand, not flat. Better prior than assuming 0.
-        logger.warning("predict_demand: empty trend_series — using growth_rate=0.15 default")
+    # pytrends 실패 시 flat(모두 같은 값) 더미 데이터가 오는 경우도 감지
+    is_flat = (
+        len(trend_series) >= 2 and
+        len(set(r.get("value", 0) for r in trend_series)) <= 1
+    )
+
+    if not trend_series or is_flat:
+        gr = _seasonal_growth_rate(keyword) if keyword else 0.20
+        source = "seasonal_inference" if keyword else "default_positive"
+        logger.warning(
+            "predict_demand: no real trend data — growth_rate=%.2f (%s) keyword='%s'",
+            gr, source, keyword,
+        )
         mid = 50.0
         return {
             "forecast": [mid] * horizon,
             "confidence_lower": [mid * 0.8] * horizon,
             "confidence_upper": [mid * 1.2] * horizon,
-            "slope": 0.5,
-            "growth_rate": 0.15,
-            "model": "default_positive",
+            "slope": gr * mid,
+            "growth_rate": gr,
+            "model": source,
         }
 
     x, values = _series_to_array(trend_series)
@@ -236,8 +287,9 @@ def run_predictions(snapshot: dict) -> dict:
     trend_series = snapshot.get("trend_series", [])
     serp = snapshot.get("serp", [])
     competitors = snapshot.get("competitors", [])
+    keyword = snapshot.get("keyword", "")
 
-    demand = predict_demand(trend_series, horizon=30)
+    demand = predict_demand(trend_series, horizon=30, keyword=keyword)
 
     # Build per-competitor SERP history (single snapshot for now)
     competitor_predictions = []
