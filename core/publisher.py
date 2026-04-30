@@ -301,7 +301,9 @@ def _count_today_posts(platform: str) -> int:
         today = str(datetime.date.today())
         return sum(
             1 for entry in logs
-            if entry.get("date") == today and entry.get("platform") == platform
+            if entry.get("date") == today
+            and entry.get("platform") == platform
+            and entry.get("status") in ("published", "dry_run")  # 실패는 카운트 제외
         )
     except Exception:
         return 0
