@@ -212,6 +212,15 @@ def predict_demand(trend_series: list[dict], horizon: int = 30,
         result = _timesfm_forecast(values.tolist(), horizon)
 
     result["growth_rate"] = _slope_to_growth_rate(result.get("slope", 0.0), mean_val)
+
+    # 계절성 floor: 캠핑 키워드 4월인데 growth_rate가 0에 가깝면
+    # 그건 더미 데이터 노이즈 때문 — seasonal floor로 보정
+    if keyword:
+        seasonal_floor = _seasonal_growth_rate(keyword)
+        if result["growth_rate"] < seasonal_floor:
+            result["growth_rate"] = seasonal_floor
+            result["model"] += "+seasonal_floor"
+
     return result
 
 
