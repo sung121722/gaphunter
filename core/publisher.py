@@ -249,13 +249,22 @@ def publish_blogger(
 
     try:
         access_token = _get_blogger_access_token()
+        # Blogger API: <script> 태그 거부 → JSON-LD 제거
+        clean_content = re.sub(
+            r'<script[^>]*>.*?</script>',
+            '',
+            content,
+            flags=re.DOTALL | re.IGNORECASE,
+        )
+        # Blogger API: HTML 주석 거부
+        clean_content = re.sub(r'<!--.*?-->', '', clean_content, flags=re.DOTALL)
         # Blogger API: labels 최대 8개 (초과 시 400 오류)
         resp = httpx.post(
             f"https://www.googleapis.com/blogger/v3/blogs/{blog_id}/posts/",
             headers={"Authorization": f"Bearer {access_token}"},
             json={
                 "title":   title,
-                "content": content,
+                "content": clean_content,
                 "labels":  tags[:8],
             },
             timeout=30,

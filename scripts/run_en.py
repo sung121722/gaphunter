@@ -61,10 +61,10 @@ for kw in candidates:
 print(f"\n[EN] 최고 gap_score: {best_score} ('{best_keyword}')")
 
 if best_score < MIN_SCORE:
-    print(f"[EN] SKIP — gap_score {best_score} < 기준 {MIN_SCORE}")
+    print(f"[EN] SKIP - gap_score {best_score} < 기준 {MIN_SCORE}")
     print(f"[EN] 오늘은 빈자리가 없습니다. 내일 다시 확인합니다.")
 
-    output_file = os.environ.get("GITHUB_OUTPUT", "/tmp/gh_output.txt")
+    output_file = os.environ.get("GITHUB_OUTPUT", os.path.join(os.environ.get("TEMP", "/tmp"), "gh_output.txt"))
     with open(output_file, "a") as f:
         f.write(f"status=skipped\n")
         f.write(f"keyword={best_keyword}\n")
@@ -74,7 +74,7 @@ if best_score < MIN_SCORE:
 
 # ── 4단계: 발행 결정 — 빈자리 선점 ──────────────────────────────────────────
 action_label = best_gap['action']
-print(f"\n[EN] PUBLISH — '{best_keyword}'  gap_score={best_score}  action={action_label}")
+print(f"\n[EN] PUBLISH - '{best_keyword}'  gap_score={best_score}  action={action_label}")
 print(f"  경쟁자 decay: {best_gap['decay_probability']:.0%}  "
       f"갭 예상: {best_gap['predicted_gap_date']}")
 
@@ -97,7 +97,7 @@ if status == "error":
 
 log_keyword(best_keyword, LANG, post_result["file_path"], products, status)
 
-output_file = os.environ.get("GITHUB_OUTPUT", "/tmp/gh_output.txt")
+output_file = os.environ.get("GITHUB_OUTPUT", os.path.join(os.environ.get("TEMP", "/tmp"), "gh_output.txt"))
 with open(output_file, "a") as f:
     f.write(f"status={status}\n")
     f.write(f"post_url={post_url}\n")

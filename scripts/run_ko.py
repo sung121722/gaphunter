@@ -55,11 +55,11 @@ for kw in candidates:
 print(f"\n[KO] 최고 gap_score: {best_score} ('{best_keyword}')")
 
 if best_score < MIN_SCORE:
-    print(f"[KO] SKIP — gap_score {best_score} < 기준 {MIN_SCORE}")
+    print(f"[KO] SKIP - gap_score {best_score} < 기준 {MIN_SCORE}")
     print(f"[KO] 오늘은 빈자리가 없습니다. 내일 다시 확인합니다.")
 
     # 이메일 step이 파일을 요구하므로 스킵 안내 HTML 생성
-    with open("/tmp/email_body.html", "w", encoding="utf-8") as f:
+    with open(os.path.join(os.environ.get("TEMP", "/tmp"), "email_body.html"), "w", encoding="utf-8") as f:
         f.write(f"""<html>
 <body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;">
 <h2 style="color:#888;">GapHunter - 오늘 발행 없음</h2>
@@ -71,7 +71,7 @@ if best_score < MIN_SCORE:
 <p style="color:#999;font-size:12px;">GapHunter Bot</p>
 </body></html>""")
 
-    output_file = os.environ.get("GITHUB_OUTPUT", "/tmp/ko_output.txt")
+    output_file = os.environ.get("GITHUB_OUTPUT", os.path.join(os.environ.get("TEMP", "/tmp"), "ko_output.txt"))
     with open(output_file, "a") as f:
         f.write(f"keyword={best_keyword}\n")
         f.write(f"score={best_score}\n")
@@ -79,7 +79,7 @@ if best_score < MIN_SCORE:
     sys.exit(0)
 
 # ── 4단계: 생성 결정 — 빈자리 선점 ──────────────────────────────────────────
-print(f"\n[KO] GENERATE — '{best_keyword}'  gap_score={best_score}  "
+print(f"\n[KO] GENERATE - '{best_keyword}'  gap_score={best_score}  "
       f"action={best_gap['action']}")
 print(f"  경쟁자 decay: {best_gap['decay_probability']:.0%}  "
       f"갭 예상: {best_gap['predicted_gap_date']}")
@@ -134,10 +134,10 @@ html_body = f"""<html>
 </body>
 </html>"""
 
-with open("/tmp/email_body.html", "w", encoding="utf-8") as f:
+with open(os.path.join(os.environ.get("TEMP", "/tmp"), "email_body.html"), "w", encoding="utf-8") as f:
     f.write(html_body)
 
-output_file = os.environ.get("GITHUB_OUTPUT", "/tmp/ko_output.txt")
+output_file = os.environ.get("GITHUB_OUTPUT", os.path.join(os.environ.get("TEMP", "/tmp"), "ko_output.txt"))
 with open(output_file, "a") as f:
     f.write(f"file_name={file_name}\n")
     f.write(f"keyword={best_keyword}\n")
