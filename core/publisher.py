@@ -103,9 +103,11 @@ def publish_tistory(
     tags: list[str],
     category: str = "캠핑",
     dry_run: bool = True,
+    visibility: str = "0",
 ) -> dict:
     """
-    티스토리 API로 글 발행.
+    티스토리 API로 글 저장/발행.
+    visibility: "0" = 비공개(임시저장), "3" = 공개 발행
     DRY_RUN: 실제 발행 없이 결과만 시뮬레이션.
 
     환경변수 필요:
@@ -117,8 +119,10 @@ def publish_tistory(
     blog_name    = config.__dict__.get("TISTORY_BLOG_NAME") or \
                    __import__("os").getenv("TISTORY_BLOG_NAME", "sung1216")
 
+    vis_label = "비공개(임시저장)" if visibility == "0" else "공개 발행"
+
     if dry_run or config.DRY_RUN_MODE:
-        logger.info("[DRY] Tistory publish simulated: '%s'", title)
+        logger.info("[DRY] Tistory %s simulated: '%s'", vis_label, title)
         return {
             "platform":   "tistory",
             "status":     "dry_run",
@@ -126,6 +130,7 @@ def publish_tistory(
             "blog":       f"{blog_name}.tistory.com",
             "tags":       tags,
             "category":   category,
+            "visibility": vis_label,
             "published_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             "post_url":   f"https://{blog_name}.tistory.com/entry/[DRY-RUN]",
         }
@@ -144,8 +149,8 @@ def publish_tistory(
                 "blogName":     blog_name,
                 "title":        title,
                 "content":      content,
-                "visibility":   "3",   # 3 = 발행
-                "category":     "0",   # 0 = 기본 카테고리
+                "visibility":   visibility,
+                "category":     "0",
                 "tag":          tag_str,
             },
             timeout=30,
@@ -155,10 +160,11 @@ def publish_tistory(
             post_url = data["tistory"]["item"]["url"]
             return {
                 "platform":     "tistory",
-                "status":       "published",
+                "status":       "saved_draft" if visibility == "0" else "published",
                 "title":        title,
                 "post_url":     post_url,
                 "tags":         tags,
+                "visibility":   vis_label,
                 "published_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
         else:
@@ -337,6 +343,7 @@ def publish(
     category: str = "",
     keyword: str = "",
     dry_run: bool = True,
+    tistory_visibility: str = "0",
 ) -> dict:
     """
     글 발행 메인 함수.
@@ -378,7 +385,7 @@ def publish(
     # 발행
     print(f"\n  체크리스트 통과 ({len(tags)}개 태그)")
     if platform == "tistory":
-        result = publish_tistory(title, content, tags, category, dry_run=dry_run)
+        result = publish_tistory(title, content, tags, category, dry_run=dry_run, visibility=tistory_visibility)
     else:
         result = publish_blogger(title, content, tags, dry_run=dry_run)
 

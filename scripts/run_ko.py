@@ -1,15 +1,21 @@
 """
-KO pipeline: 갭 스코어 기반 선별 생성
+KO pipeline: 갭 스코어 기반 선별 생성 → 티스토리 비공개 저장
 
 흐름:
-  1. 트렌드 상위 3개 키워드 후보 선정
+  1. 트렌드 상위 5개 키워드 후보 선정
   2. 각 키워드 전체 분석 (collect → predict → score)
   3. gap_score 가장 높은 키워드 선택
-  4. gap_score >= GAP_SCORE_MEDIUM(40)이어야만 생성
-  5. 기준 미달 시 오늘은 스킵 — 아무 글이나 올리지 않는다
+  4. gap_score >= 55 → 정상 발행
+  5. gap_score < 55 → fallback_keywords_ko.txt에서 랜덤 키워드로 무조건 생성
+     (블로그 맥박 유지 — 스킵 없음)
+  6. 생성 완료 → 티스토리 API로 비공개(visibility=0) 저장
+     (관리자가 폰에서 '발행' 버튼만 누르면 완료 — 이메일 알림 폐지)
 """
 import sys
 import os
+import random
+from pathlib import Path
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
@@ -18,12 +24,15 @@ from core.collector  import collect
 from core.predictor  import run_predictions
 from core.scorer     import score_gap
 from core.generator  import generate_post
+from core.publisher  import publish
 
-LANG       = "ko"
-GEO        = "KR"
-MIN_SCORE  = 55   # 55+ 이면 생성 (SERP 변동으로 60 경계선 불안정 해소)
+LANG      = "ko"
+GEO       = "KR"
+MIN_SCORE = 55
 
-# ── 1단계: 트렌드 기반 후보 5개 선정 (3→5로 확대) ────────────────────────────
+FALLBACK_FILE = Path(__file__).parent.parent / "fallback_keywords_ko.txt"
+
+# ── 1단계: 트렌드 기반 후보 5개 선정 ──────────────────────────────────────────
 candidates = pick_top_keywords(LANG, n=5)
 print(f"\n[KO] 후보 키워드: {candidates}")
 
@@ -51,35 +60,31 @@ for kw in candidates:
         best_snapshot = snapshot
         best_gap      = gap_result
 
-# ── 3단계: 기준 미달 시 스킵 ─────────────────────────────────────────────────
+# ── 3단계: 기준 미달 시 폴백 키워드로 대체 ───────────────────────────────────
 print(f"\n[KO] 최고 gap_score: {best_score} ('{best_keyword}')")
 
+is_fallback = False
 if best_score < MIN_SCORE:
-    print(f"[KO] SKIP - gap_score {best_score} < 기준 {MIN_SCORE}")
-    print(f"[KO] 오늘은 빈자리가 없습니다. 내일 다시 확인합니다.")
+    print(f"[KO] gap_score {best_score} < 기준 {MIN_SCORE} — Fallback 모드 진입")
+    try:
+        lines = [l.strip() for l in FALLBACK_FILE.read_text(encoding="utf-8").splitlines() if l.strip()]
+        best_keyword = random.choice(lines)
+        print(f"[KO] Fallback 키워드 선택: '{best_keyword}'")
 
-    # 이메일 step이 파일을 요구하므로 스킵 안내 HTML 생성
-    with open(os.path.join(os.environ.get("TEMP", "/tmp"), "email_body.html"), "w", encoding="utf-8") as f:
-        f.write(f"""<html>
-<body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;">
-<h2 style="color:#888;">GapHunter - 오늘 발행 없음</h2>
-<p style="background:#f5f5f5;padding:12px;border-radius:6px;">
-  최고 gap_score: <strong>{best_score}/100</strong> (기준: {MIN_SCORE})<br>
-  후보 키워드: {best_keyword}<br><br>
-  오늘은 빈자리가 없습니다. 내일 다시 확인합니다.
-</p>
-<p style="color:#999;font-size:12px;">GapHunter Bot</p>
-</body></html>""")
+        snapshot    = collect(best_keyword, geo=GEO)
+        predictions = run_predictions(snapshot)
+        best_gap    = score_gap(best_keyword, predictions)
+        best_gap["competitors"] = snapshot.get("competitors", [])
+        best_score  = best_gap["gap_score"]
+        is_fallback = True
+        print(f"[KO] Fallback gap_score: {best_score}")
+    except Exception as e:
+        print(f"[KO] Fallback 실패: {e}")
+        sys.exit(1)
 
-    output_file = os.environ.get("GITHUB_OUTPUT", os.path.join(os.environ.get("TEMP", "/tmp"), "ko_output.txt"))
-    with open(output_file, "a") as f:
-        f.write(f"keyword={best_keyword}\n")
-        f.write(f"score={best_score}\n")
-        f.write(f"status=skipped\n")
-    sys.exit(0)
-
-# ── 4단계: 생성 결정 — 빈자리 선점 ──────────────────────────────────────────
-print(f"\n[KO] GENERATE - '{best_keyword}'  gap_score={best_score}  "
+# ── 4단계: 글 생성 ────────────────────────────────────────────────────────────
+mode_label = "[FALLBACK]" if is_fallback else "[GAP]"
+print(f"\n[KO] GENERATE {mode_label} - '{best_keyword}'  gap_score={best_score}  "
       f"action={best_gap['action']}")
 print(f"  경쟁자 decay: {best_gap['decay_probability']:.0%}  "
       f"갭 예상: {best_gap['predicted_gap_date']}")
@@ -92,57 +97,43 @@ if post_result.get("skipped"):
 products  = post_result.get("verified_products", [])
 file_path = post_result["file_path"]
 file_name = os.path.basename(file_path)
+content   = post_result["content"]
+title     = f"{best_keyword} 추천 {best_gap['predicted_gap_date'][:4]}"
 
-log_keyword(best_keyword, LANG, file_path, products, status="generated")
+# ── 5단계: 티스토리 비공개 저장 (이메일 알림 폐지) ───────────────────────────
+print(f"\n[KO] 티스토리 비공개 저장 중...")
+pub = publish(
+    title,
+    content,
+    language=LANG,
+    keyword=best_keyword,
+    dry_run=False,
+    tistory_visibility="0",   # 0 = 비공개 — 관리자가 폰에서 발행 버튼만 누르면 완료
+)
 
-# 이메일 HTML 본문 생성
-product_items = "".join(f"<li>{p}</li>" for p in products) if products else "<li>(상품 목록 없음)</li>"
+status   = pub.get("status", "error")
+post_url = pub.get("post_url", "")
 
-html_body = f"""<html>
-<body style="font-family:sans-serif;max-width:600px;margin:auto;padding:20px;">
-<h2 style="color:#e84c5a;">GapHunter - 티스토리 발행 대기</h2>
-<p style="background:#fff3cd;padding:12px;border-radius:6px;">
-  <strong>gap_score {best_score}/100</strong> — {best_gap['action']}<br>
-  경쟁자 decay 확률: {best_gap['decay_probability']:.0%} |
-  갭 예상일: {best_gap['predicted_gap_date']}
-</p>
-<table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-  <tr>
-    <td style="padding:8px;background:#f5f5f5;font-weight:bold;">키워드</td>
-    <td style="padding:8px;">{best_keyword}</td>
-  </tr>
-  <tr>
-    <td style="padding:8px;background:#f5f5f5;font-weight:bold;">파일명</td>
-    <td style="padding:8px;font-family:monospace;">posts/{file_name}</td>
-  </tr>
-  <tr>
-    <td style="padding:8px;background:#f5f5f5;font-weight:bold;">Gap Score</td>
-    <td style="padding:8px;">{best_score}/100</td>
-  </tr>
-</table>
-<h3>할 일 (약 15분)</h3>
-<ol>
-  <li>아래 제품들 쿠팡 파트너스에서 링크 생성</li>
-  <li>posts/{file_name} 파일에 링크 교체</li>
-  <li>티스토리 HTML 모드로 붙여넣기 후 발행</li>
-</ol>
-<h3>쿠팡 파트너스 링크 필요 제품</h3>
-<ul>{product_items}</ul>
-<p><a href="https://partners.coupang.com">partners.coupang.com</a> 에서 상품 검색 후 링크 생성</p>
-<hr>
-<p style="color:#999;font-size:12px;">GapHunter Bot — gap_score {best_score} / 기준 {MIN_SCORE}</p>
-</body>
-</html>"""
+if status == "error":
+    reason = pub.get("reason", "unknown")
+    print(f"[KO] 티스토리 저장 실패: {reason[:200]}")
+    print(f"[KO] 로컬 파일은 저장됨: posts/{file_name}")
+elif status == "saved_draft":
+    print(f"[KO] 티스토리 비공개 저장 완료!")
+    print(f"[KO] 관리자 액션: 티스토리 관리자 → 해당 글 '발행' 버튼만 클릭")
+    if post_url:
+        print(f"[KO] 초안 URL: {post_url}")
 
-with open(os.path.join(os.environ.get("TEMP", "/tmp"), "email_body.html"), "w", encoding="utf-8") as f:
-    f.write(html_body)
+log_keyword(best_keyword, LANG, file_path, products, status)
 
 output_file = os.environ.get("GITHUB_OUTPUT", os.path.join(os.environ.get("TEMP", "/tmp"), "ko_output.txt"))
 with open(output_file, "a") as f:
     f.write(f"file_name={file_name}\n")
     f.write(f"keyword={best_keyword}\n")
     f.write(f"score={best_score}\n")
-    f.write(f"status=generated\n")
+    f.write(f"status={status}\n")
+    f.write(f"post_url={post_url}\n")
+    f.write(f"fallback={is_fallback}\n")
 
-print(f"\n[KO] 포스트 생성 완료: {file_name}")
-print(f"[KO] gap_score: {best_score}  →  '{best_keyword}' 선점 준비 완료")
+print(f"\n[KO] 완료: {status} {mode_label}")
+print(f"[KO] gap_score: {best_score}  →  '{best_keyword}' 준비 완료")
