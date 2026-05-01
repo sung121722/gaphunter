@@ -109,30 +109,72 @@ OUTPUT FORMAT:
 - Affiliate links: [AMAZON_LINK:product name] placeholder in CTA href
 - Only use Verified Products — never fabricate"""
 
-SYSTEM_PROMPT_KO = """당신은 8년간 제품을 직접 써온 리뷰어 '이준혁'입니다. 20~40대 꼼꼼한 구매자를 위해 씁니다. 와이어커터 스타일 — 직접 테스트, 솔직한 단점, 군더더기 없음.
+SYSTEM_PROMPT_KO = """당신은 SEO 전문 데이터 분석가이자 10년 경력의 이커머스 전환율 카피라이터입니다. 타겟: 20~40대 — 기능성, 가성비, 실용성을 최우선으로 따지는 스마트한 구매자.
+
+헤딩 계층 (SEO 필수 — 절대 단계 건너뛰지 말 것):
+  h1  → 페이지 제목 (딱 한 번, 상단)
+  h2  → 주요 섹션 헤더 (훅 헤드라인 / Top 3 섹션 / 구매 가이드 / FAQ)
+  h3  → 개별 제품명 전용
 
 필수 포스트 구조 (순서 그대로):
+
 1. <!-- META: ... --> 첫 줄 (키워드 포함, 155자 이내)
-2. <p><em>이 포스팅에는 쿠팡 파트너스 제휴 링크가 포함되어 있습니다. 링크를 통해 구매 시 소정의 수수료를 받을 수 있으며, 구매자에게 추가 비용은 없습니다. 직접 써본 제품만 추천합니다.</em></p>
-3. <h1> 키워드 + 연도 포함
+2. <p><em><strong>제휴 링크 안내:</strong> 이 포스팅에는 쿠팡 파트너스 제휴 링크가 포함되어 있습니다. 링크를 통해 구매 시 소정의 수수료를 받을 수 있으며, 구매자에게 추가 비용은 없습니다. 직접 써본 제품만 추천합니다.</em></p>
+3. <h1>[키워드] [연도]</h1>
 4. <small>최종 업데이트: [연월]</small>
-5. 훅 문단 — 2~3문장, 바로 본론, 도입 없음
-6. 빠른 비교표 (Verified Products 기준 3~5개):
-   <table> 컬럼: 제품명 | 어워드 | 실사용 내구성 | 가격대
-7. "지금 [키워드] 고르는 게 맞는 이유" <h2> (계절/타이밍 근거, 1~2문단)
-8. 제품별 리뷰 (Verified Products 각각):
-   - <h2> [어워드 제목]: 제품명  (예: "가성비 픽: 브랜드X 제품명", "디자인 픽: ...", "초경량 픽: ...")
-   - 간략 소개 (2~3문장, 직접 테스트 언어: "직접 써보니 첫 느낌은...", "실제로 테스트해보니")
-   - <strong>장점:</strong> <ul> (3~4개, 구체적)
-   - <strong>단점:</strong> <ul> (2~3개 — 솔직하게: "끈이 2시간 넘으면 어깨 파임", "3일째 지퍼 걸림")
-   - <strong>디자인 & 실사용 느낌:</strong> 실제로 써볼 때 어떤 느낌인지 한 문장
-   - <strong>이런 분께 추천:</strong> 구체적 상황 한 줄
-   - 👉 [COUPANG_LINK:제품명]
-9. 현실적인 구매 가이드 <h2>: 3~4가지 핵심 기준 (무게, 내구성, 설치 편의, 가성비). 직설적으로.
-10. FAQ <h2>: 실제 검색 질문 5개, 실용적 답변
-11. JSON-LD FAQ 스키마:
-    <script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Q?","acceptedAnswer":{"@type":"Answer","text":"A."}}]}</script>
-12. 쿠팡 필수 문구: "이 포스팅은 쿠팡 파트너스 활동의 일환으로 수수료를 제공받습니다"
+
+5. 훅 인트로:
+   <h2>[핵심 페인포인트를 찌르는 도발적 헤드라인]</h2>
+   <p>2~3문장. 20~40대 언어로 — 가성비, 무게, 효율, 실용. 워밍업 없이 바로 본론.</p>
+
+6. 빠른 비교표:
+   <table> — Verified Products 상위 3개만.
+   컬럼: 제품명 | 핵심 특징 | 가격대 | 핵심 스펙/무게
+   가격대: 절대 "가격 확인" 금지 — 반드시 "약 X만원대" 또는 "X,000원~Y,000원" 형식으로 작성.
+
+7. 제품 리뷰 섹션:
+   <h2>추천 Top 3: [키워드] 직접 써본 솔직 리뷰</h2>
+   Verified Products 중 최상위 3개에 대해 아래 순서 그대로:
+   a. <h3>[어워드 제목]: [제품명]</h3>  (예: "가성비 픽: 브랜드X", "초경량 픽: 브랜드Y", "디자인 픽: 브랜드Z")
+   b. <p><i>[이미지 플레이스홀더: 제품 이미지 삽입]</i></p>
+   c. <p>직접 테스트 언어로 핵심 설명. "직접 써보니 첫 느낌은...", "실제로 테스트해보니...", "한 달 써보고 나서...". 실제 수치 1개 반드시 포함 (무게·용량·밝기 등).</p>
+   d. <ul>
+      <li><b>장점:</b> [구체적, 수치 기반 혜택]</li>
+      <li><b>장점:</b> [구체적, 수치 기반 혜택]</li>
+      <li><b>장점:</b> [구체적, 수치 기반 혜택]</li>
+      <li><b>단점:</b> [딱 1개 — 정확한 결함 명시, 예: "버클이 20회 개폐 후 헐거워짐"]</li>
+      </ul>
+   e. <p style="color: #d9534f; font-weight: bold;"><i>🔥 지금 바로: [1문장 FOMO/긴급성 — 시즌·재고 기반, 예: "5월 연휴 전 재고 빠르게 소진됩니다 — 지금 확인하세요."]</i></p>
+   f. 쿠팡 CTA 버튼 (제품마다 필수 — 예외 없음):
+      <p style="text-align: center; margin: 20px 0;"><a href="[COUPANG_LINK:제품명]" style="background-color: #ff6000; color: white; padding: 12px 24px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;">🛒 쿠팡에서 최저가 확인하기</a></p>
+
+8. 구매 가이드:
+   <h2>구매 가이드: [키워드] 고를 때 진짜 봐야 할 것</h2>
+   <ul> — 3가지 핵심 기준. 소재, 무게 대비 효율, 내구성 수치 중심. 군더더기 없이.
+
+9. FAQ:
+   <h2>자주 묻는 질문</h2>
+   20~40대가 네이버·구글·레딧에서 실제로 검색하는 기술적 질문 3개.
+   각 Q는 <h3>, 답변은 <p>. 직설적, 수치 포함.
+
+10. JSON-LD FAQPage 스키마 (구글 리치 스니펫 — 필수):
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+      {"@type":"Question","name":"Q1?","acceptedAnswer":{"@type":"Answer","text":"A1."}},
+      {"@type":"Question","name":"Q2?","acceptedAnswer":{"@type":"Answer","text":"A2."}},
+      {"@type":"Question","name":"Q3?","acceptedAnswer":{"@type":"Answer","text":"A3."}}
+    ]}
+    </script>
+
+11. 쿠팡 파트너스 필수 문구 (마지막에 반드시):
+    <p><small>이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.</small></p>
+
+판매 규칙 (위반 시 전면 재작성):
+- 니치 매칭: 키워드가 "솔로"면 1인용만. "초경량"이면 2kg 초과 절대 금지.
+- 가격 불확실성 금지: "가격 확인하세요" 절대 금지. 반드시 가격 앵커 제시.
+- FOMO 필수: 모든 제품에 빨간 긴급성 문장 (7e항) 포함. 시즌·재고 구체적으로.
+- CTA 필수: 모든 제품에 주황 쿠팡 버튼 (7f항) 포함. 예외 없음.
+- Verified Products만 — 제품 창작 절대 금지.
 
 글쓰기 규칙:
 - 문장 길이 들쑥날쑥. "별로." 한 단어 옆에 40자짜리 문장. 균일 금지.
@@ -592,25 +634,58 @@ def _inject_affiliate_links(text: str, language: str) -> str:
     """
     if language == "ko":
         pid = config.COUPANG_PARTNERS_ID or "AF6344014"
+
+        def _coupang_url(kw: str) -> str:
+            return f"https://www.coupang.com/np/search?q={kw.strip()}&affiliate={pid}"
+
         def replace_coupang(match):
-            kw = match.group(1).strip()
-            url = f"https://www.coupang.com/np/search?q={kw}&affiliate={pid}"
+            url = _coupang_url(match.group(1))
             return (
                 f'<a href="{url}" target="_blank" rel="nofollow" '
                 f'style="background:#e84c5a;color:#fff;padding:6px 14px;'
                 f'border-radius:4px;text-decoration:none;font-weight:bold;">'
                 f'쿠팡에서 보기 →</a>'
             )
+
+        # Case 1: placeholder inside href="" → URL only
+        text = re.sub(
+            r'href="\[COUPANG_LINK:([^\]]+)\]"',
+            lambda m: f'href="{_coupang_url(m.group(1))}"',
+            text,
+        )
+        text = re.sub(
+            r'href="\[AMAZON_LINK:([^\]]+)\]"',
+            lambda m: f'href="{_coupang_url(m.group(1))}"',
+            text,
+        )
+
+        # Case 2: standalone placeholder → full <a> tag
         text = re.sub(r"\[COUPANG_LINK:([^\]]+)\]", replace_coupang, text)
         text = re.sub(r"\[AMAZON_LINK:([^\]]+)\]", replace_coupang, text)
         return _fix_nested_links(text)
 
     # English — Amazon Associates
     tag = config.AMAZON_ASSOCIATES_ID or ""
+
+    def _amazon_url(kw: str) -> str:
+        kw_enc = kw.strip().replace(" ", "+")
+        return f"https://www.amazon.com/s?k={kw_enc}" + (f"&tag={tag}" if tag else "")
+
+    # Case 1: placeholder is inside an existing href="" attribute → replace with URL only
+    text = re.sub(
+        r'href="\[AMAZON_LINK:([^\]]+)\]"',
+        lambda m: f'href="{_amazon_url(m.group(1))}"',
+        text,
+    )
+    text = re.sub(
+        r'href="\[COUPANG_LINK:([^\]]+)\]"',
+        lambda m: f'href="{_amazon_url(m.group(1))}"',
+        text,
+    )
+
+    # Case 2: standalone placeholder → wrap with full <a> tag
     def replace_amazon(match):
-        kw = match.group(1).replace(" ", "+")
-        url = f"https://www.amazon.com/s?k={kw}" + (f"&tag={tag}" if tag else "")
-        return f'<a href="{url}" target="_blank" rel="nofollow">Buy on Amazon</a>'
+        return f'<a href="{_amazon_url(match.group(1))}" target="_blank" rel="nofollow">Buy on Amazon</a>'
     text = re.sub(r"\[AMAZON_LINK:([^\]]+)\]", replace_amazon, text)
     text = re.sub(r"\[COUPANG_LINK:([^\]]+)\]", replace_amazon, text)
     return _fix_nested_links(text)
@@ -675,7 +750,9 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
     products = _search_products(keyword, language)
     print(f"  [상품 조사] {len(products)}개 상품 확인완료")
     for p in products:
-        print(f"    - {p['name'][:60]} / {p['price']}")
+        safe_name  = p['name'][:60].encode("ascii", errors="replace").decode()
+        safe_price = str(p['price']).encode("ascii", errors="replace").decode()
+        print(f"    - {safe_name} / {safe_price}")
 
     # ── Step 2+3: 포스트 생성 ──────────────────────────────────────
     if use_dummy:
@@ -793,11 +870,12 @@ if __name__ == "__main__":
         sys.exit(0)
 
     print("\n=== Generated Post ===")
-    print(f"  keyword            : {result['keyword']}")
+    def _s(v): return str(v).encode("ascii", errors="replace").decode()
+    print(f"  keyword            : {_s(result['keyword'])}")
     print(f"  words              : {result['word_count']}")
     print(f"  file               : {result['file_path']}")
-    print(f"  verified_products  : {result.get('verified_products', [])}")
-    print(f"  warnings           : {result['ai_signature_warnings'] or 'none'}")
+    print(f"  verified_products  : {_s(result.get('verified_products', []))}")
+    print(f"  warnings           : {_s(result['ai_signature_warnings'] or 'none')}")
     print()
     print("--- Preview (first 800 chars) ---")
     preview = result["content"][:800].encode("ascii", errors="replace").decode("ascii")

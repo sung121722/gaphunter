@@ -85,7 +85,7 @@ if post_result.get("skipped"):
 
 title   = f"Best {best_keyword.title()} ({config.CLAUDE_MODEL[:4].upper()} Tested {best_gap['predicted_gap_date'][:4]})"
 content = post_result["content"]
-pub     = publish(title, content, language=LANG, dry_run=False)
+pub     = publish(title, content, language=LANG, keyword=best_keyword, dry_run=False)
 
 status   = pub.get("status", "error")
 post_url = pub.get("post_url", "")

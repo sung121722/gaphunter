@@ -74,31 +74,23 @@ def pre_publish_check(content: str, language: str, tags: list[str]) -> dict:
 # ─── Tag generator ────────────────────────────────────────────────────────────
 
 def generate_tags(keyword: str, language: str, category: str = "") -> list[str]:
-    """키워드 기반 태그 20개 자동 생성."""
-    base = keyword.lower().split()
+    """
+    키워드 기반 태그 생성.
+    Blogger API 제약: 라벨 1개당 최대 40자, 총 20개 이하.
+    단어 단위 짧은 태그 + 핵심 복합어 태그로 구성.
+    """
+    words = [w for w in keyword.lower().split() if len(w) > 2]
 
     if language == "ko":
-        suffixes = ["추천", "후기", "비교", "순위", "가성비", "2026",
-                    "구매가이드", "베스트", "TOP5", "리뷰",
-                    "쿠팡", "로켓배송", "할인", "최저가", "직구대안",
-                    "선물", "인기", "신상", "브랜드", "사용법"]
-        tags = [keyword]
-        for s in suffixes:
-            tags.append(f"{keyword} {s}")
-            if len(tags) >= 20:
-                break
-        tags = tags[:20]
+        category_tags = ["캠핑", "아웃도어", "리뷰", "추천", "2026", "가성비",
+                         "쿠팡", "구매가이드"]
+        tags = list(dict.fromkeys(words + category_tags))[:8]
     else:
-        suffixes = ["review", "best", "guide", "2026", "top", "buy",
-                    "comparison", "rated", "cheap", "recommendations",
-                    "tested", "worth it", "pros cons", "under $50",
-                    "for beginners", "lightweight", "durable", "amazon", "deals", "picks"]
-        tags = [keyword]
-        for s in suffixes:
-            tags.append(f"{keyword} {s}")
-            if len(tags) >= 20:
-                break
-        tags = tags[:20]
+        category_tags = ["camping", "outdoor", "gear", "review", "2026",
+                         "hiking", "amazon", "guide"]
+        # 키워드 단어 + 카테고리 태그 (중복 제거, 40자 이하만)
+        combined = list(dict.fromkeys(words + category_tags))
+        tags = [t for t in combined if len(t) <= 40][:8]
 
     return tags
 
@@ -343,6 +335,7 @@ def publish(
     content: str,
     language: str = "en",
     category: str = "",
+    keyword: str = "",
     dry_run: bool = True,
 ) -> dict:
     """
@@ -352,11 +345,16 @@ def publish(
     3. 일일 발행 한도 확인
     4. 플랫폼별 발행
     5. 로그 기록
+
+    keyword: 원본 검색 키워드 (태그 생성용 — title보다 짧고 깔끔)
     """
     platform = "tistory" if language == "ko" else "blogger"
 
-    # 태그 생성
-    tags = generate_tags(title, language, category)
+    # 태그 생성: keyword가 있으면 title 대신 사용 (Blogger 라벨 길이 제한 대응)
+    tag_base = keyword if keyword else title
+    # 안전하게 50자 이하로 자르기
+    tag_base = tag_base[:50].strip()
+    tags = generate_tags(tag_base, language, category)
 
     # 발행 전 체크
     check = pre_publish_check(content, language, tags)
