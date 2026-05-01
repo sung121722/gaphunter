@@ -418,7 +418,8 @@ def _build_user_prompt(keyword: str, gap_data: dict, language: str,
     current_month = datetime.date.today().strftime("%B %Y")   # e.g. "April 2026"
 
     if language == "ko":
-        current_month_ko = datetime.date.today().strftime("%Y년 %-m월") if hasattr(datetime.date.today(), 'strftime') else f"{datetime.date.today().year}년 {datetime.date.today().month}월"
+        _today = datetime.date.today()
+        current_month_ko = f"{_today.year}년 {_today.month}월"
         structure = f"""
 <!-- META: {keyword} 직접 써본 후기. 가격·스펙 실시간 비교 {current_year}년 최신 업데이트. -->
 
