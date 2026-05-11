@@ -51,9 +51,9 @@ jobs:
           git push
 
 
-  # ── KO: 포스트 생성 + 티스토리 비공개 저장 ───────────────────────────────
+  # ── KO: 포스트 생성 + Blogger 발행 ──────────────────────────────────────
   generate-ko:
-    name: KO 포스트 생성 + 티스토리 비공개 저장
+    name: KO 포스트 생성 + Blogger 발행
     runs-on: ubuntu-latest
     needs: publish-en
     if: always()
@@ -73,7 +73,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate KO post + 티스토리 비공개 저장
+      - name: Generate KO post + Blogger 발행
         id: generate
         env:
           ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
@@ -81,8 +81,10 @@ jobs:
           GOOGLE_CSE_KEY:       ${{ secrets.GOOGLE_CSE_KEY }}
           COUPANG_PARTNERS_ID:  ${{ secrets.COUPANG_PARTNERS_ID }}
           COLAB_PREDICTOR_URL:  ${{ secrets.COLAB_PREDICTOR_URL }}
-          TISTORY_ACCESS_TOKEN: ${{ secrets.TISTORY_ACCESS_TOKEN }}
-          TISTORY_BLOG_NAME:    ${{ secrets.TISTORY_BLOG_NAME }}
+          BLOGGER_BLOG_ID_KO:   ${{ secrets.BLOGGER_BLOG_ID_KO }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           DRY_RUN_MODE:         "false"
         run: python scripts/run_ko.py
 

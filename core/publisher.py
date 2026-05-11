@@ -213,12 +213,13 @@ def publish_blogger(
     content: str,
     tags: list[str],
     dry_run: bool = True,
+    blog_id: str = "",
 ) -> dict:
     """
     구글 블로거 API로 글 발행 (OAuth2 refresh token 방식).
 
     환경변수 필요:
-        BLOGGER_BLOG_ID
+        BLOGGER_BLOG_ID (EN) 또는 BLOGGER_BLOG_ID_KO (KO)
         GOOGLE_REFRESH_TOKEN
         GOOGLE_CLIENT_ID
         GOOGLE_CLIENT_SECRET
@@ -228,7 +229,7 @@ def publish_blogger(
     import os
     import httpx
 
-    blog_id = os.getenv("BLOGGER_BLOG_ID", "")
+    blog_id = blog_id or os.getenv("BLOGGER_BLOG_ID", "")
 
     if dry_run or config.DRY_RUN_MODE:
         logger.info("[DRY] Blogger publish simulated: '%s'", title)
@@ -333,7 +334,7 @@ def _log_publish(result: dict) -> None:
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-DAILY_LIMITS = {"tistory": 3, "blogger": 3}
+DAILY_LIMITS = {"blogger": 3}
 
 
 def publish(
@@ -343,23 +344,26 @@ def publish(
     category: str = "",
     keyword: str = "",
     dry_run: bool = True,
-    tistory_visibility: str = "0",
 ) -> dict:
     """
-    글 발행 메인 함수.
+    글 발행 메인 함수 — EN/KO 모두 Google Blogger로 발행.
     1. 태그 자동 생성
     2. 발행 전 체크리스트
     3. 일일 발행 한도 확인
-    4. 플랫폼별 발행
+    4. Blogger API 발행
     5. 로그 기록
 
+    KO 블로그: BLOGGER_BLOG_ID_KO 환경변수 (없으면 BLOGGER_BLOG_ID 사용)
     keyword: 원본 검색 키워드 (태그 생성용 — title보다 짧고 깔끔)
     """
-    platform = "tistory" if language == "ko" else "blogger"
+    import os
+    platform = "blogger"
+
+    # KO는 별도 블로그 ID 사용 가능 (없으면 EN과 동일 블로그)
+    blog_id = os.getenv("BLOGGER_BLOG_ID_KO", "") if language == "ko" else ""
 
     # 태그 생성: keyword가 있으면 title 대신 사용 (Blogger 라벨 길이 제한 대응)
     tag_base = keyword if keyword else title
-    # 안전하게 50자 이하로 자르기
     tag_base = tag_base[:50].strip()
     tags = generate_tags(tag_base, language, category)
 
@@ -382,12 +386,9 @@ def publish(
         print(f"  [!] {platform} 일일 한도 초과 ({today_count}/{limit})")
         return {"platform": platform, "status": "limit_exceeded"}
 
-    # 발행
-    print(f"\n  체크리스트 통과 ({len(tags)}개 태그)")
-    if platform == "tistory":
-        result = publish_tistory(title, content, tags, category, dry_run=dry_run, visibility=tistory_visibility)
-    else:
-        result = publish_blogger(title, content, tags, dry_run=dry_run)
+    # 발행 (EN/KO 모두 Blogger)
+    print(f"\n  체크리스트 통과 ({len(tags)}개 태그) [{language.upper()} → Blogger]")
+    result = publish_blogger(title, content, tags, dry_run=dry_run, blog_id=blog_id)
 
     # 로그 기록
     _log_publish(result)

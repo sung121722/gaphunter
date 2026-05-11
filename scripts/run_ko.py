@@ -1,15 +1,14 @@
 """
-KO pipeline: 갭 스코어 기반 선별 생성 → 티스토리 비공개 저장
+KO pipeline: 갭 스코어 기반 선별 생성 → Google Blogger 직접 발행
 
 흐름:
   1. 트렌드 상위 5개 키워드 후보 선정
   2. 각 키워드 전체 분석 (collect → predict → score)
   3. gap_score 가장 높은 키워드 선택
   4. gap_score >= 55 → 정상 발행
-  5. gap_score < 55 → fallback_keywords_ko.txt에서 랜덤 키워드로 무조건 생성
-     (블로그 맥박 유지 — 스킵 없음)
-  6. 생성 완료 → 티스토리 API로 비공개(visibility=0) 저장
-     (관리자가 폰에서 '발행' 버튼만 누르면 완료 — 이메일 알림 폐지)
+  5. gap_score < 55 → fallback_keywords_ko.txt에서 랜덤 키워드로 무조건 발행
+  6. 생성 완료 → Google Blogger API로 직접 공개 발행
+     (BLOGGER_BLOG_ID_KO 환경변수 필요)
 """
 import sys
 import os
@@ -100,15 +99,14 @@ file_name = os.path.basename(file_path)
 content   = post_result["content"]
 title     = f"{best_keyword} 추천 {best_gap['predicted_gap_date'][:4]}"
 
-# ── 5단계: 티스토리 비공개 저장 (이메일 알림 폐지) ───────────────────────────
-print(f"\n[KO] 티스토리 비공개 저장 중...")
+# ── 5단계: Google Blogger 발행 ────────────────────────────────────────────────
+print(f"\n[KO] Google Blogger 발행 중...")
 pub = publish(
     title,
     content,
     language=LANG,
     keyword=best_keyword,
     dry_run=False,
-    tistory_visibility="0",   # 0 = 비공개 — 관리자가 폰에서 발행 버튼만 누르면 완료
 )
 
 status   = pub.get("status", "error")
@@ -116,13 +114,12 @@ post_url = pub.get("post_url", "")
 
 if status == "error":
     reason = pub.get("reason", "unknown")
-    print(f"[KO] 티스토리 저장 실패: {reason[:200]}")
+    print(f"[KO] 발행 실패: {reason[:200]}")
     print(f"[KO] 로컬 파일은 저장됨: posts/{file_name}")
-elif status == "saved_draft":
-    print(f"[KO] 티스토리 비공개 저장 완료!")
-    print(f"[KO] 관리자 액션: 티스토리 관리자 → 해당 글 '발행' 버튼만 클릭")
+elif status == "published":
+    print(f"[KO] Blogger 발행 완료!")
     if post_url:
-        print(f"[KO] 초안 URL: {post_url}")
+        print(f"[KO] URL: {post_url}")
 
 log_keyword(best_keyword, LANG, file_path, products, status)
 
@@ -136,4 +133,4 @@ with open(output_file, "a") as f:
     f.write(f"fallback={is_fallback}\n")
 
 print(f"\n[KO] 완료: {status} {mode_label}")
-print(f"[KO] gap_score: {best_score}  →  '{best_keyword}' 준비 완료")
+print(f"[KO] gap_score: {best_score}  →  '{best_keyword}' 발행 완료")
