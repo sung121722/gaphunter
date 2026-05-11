@@ -95,7 +95,13 @@ if post_result.get("skipped"):
     print(f"[EN] 생성 스킵: {post_result['reason']}")
     sys.exit(0)
 
-title   = f"Best {best_keyword.title()} ({config.CLAUDE_MODEL[:4].upper()} Tested {best_gap['predicted_gap_date'][:4]})"
+# 키워드에 이미 "best"가 있으면 중복 방지
+_kw = best_keyword.strip()
+_kw_title = _kw.title()
+if _kw.lower().startswith("best "):
+    title = f"{_kw_title} — Tested & Reviewed {best_gap['predicted_gap_date'][:4]}"
+else:
+    title = f"Best {_kw_title} — Tested & Reviewed {best_gap['predicted_gap_date'][:4]}"
 content = post_result["content"]
 pub     = publish(title, content, language=LANG, keyword=best_keyword, dry_run=False)
 
