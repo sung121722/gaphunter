@@ -2,7 +2,7 @@ name: GapHunter Daily
 
 on:
   schedule:
-    - cron: '17 1 * * *'  # 매일 01:17 UTC = 10:17 KST (피크 시간 회피)
+    - cron: '17 1 * * *'  # 매일 01:17 UTC = 10:17 KST
   workflow_dispatch:        # 수동 실행 버튼
 
 jobs:
@@ -47,53 +47,5 @@ jobs:
           git config user.email "bot@gaphunter.com"
           git add posts/ wiki/
           git diff --staged --quiet || git commit -m "feat(en): daily post - $(date +%Y-%m-%d)"
-          git pull --rebase origin main
-          git push
-
-
-  # ── KO: 포스트 생성 + Blogger 발행 ──────────────────────────────────────
-  generate-ko:
-    name: KO 포스트 생성 + Blogger 발행
-    runs-on: ubuntu-latest
-    needs: publish-en
-    if: always()
-    permissions:
-      contents: write
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Generate KO post + Blogger 발행
-        id: generate
-        env:
-          ANTHROPIC_API_KEY:    ${{ secrets.ANTHROPIC_API_KEY }}
-          SERPAPI_KEY:          ${{ secrets.SERPAPI_KEY }}
-          GOOGLE_CSE_KEY:       ${{ secrets.GOOGLE_CSE_KEY }}
-          COUPANG_PARTNERS_ID:  ${{ secrets.COUPANG_PARTNERS_ID }}
-          COLAB_PREDICTOR_URL:  ${{ secrets.COLAB_PREDICTOR_URL }}
-          BLOGGER_BLOG_ID_KO:   ${{ secrets.BLOGGER_BLOG_ID_KO }}
-          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
-          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          DRY_RUN_MODE:         "false"
-        run: python scripts/run_ko.py
-
-      - name: Commit posts & wiki
-        if: always()
-        run: |
-          git config user.name  "GapHunter Bot"
-          git config user.email "bot@gaphunter.com"
-          git add posts/ wiki/
-          git diff --staged --quiet || git commit -m "feat(ko): daily post draft - $(date +%Y-%m-%d)"
           git pull --rebase origin main
           git push
