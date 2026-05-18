@@ -94,7 +94,7 @@ STRICT RULES (violating any = rewrite):
 - NO PLACEHOLDERS: Never write "[Image Placeholder]" or similar. Skip images entirely if no URL is provided.
 - NO AI ARTIFACTS: No "(AI Tested)", no self-references, no weird tags.
 - NICHE MATCHING: If topic is "ultralight", nothing over 2 lbs. If "solo", only solo gear.
-- NO PRICE UNCERTAINTY: Never write "check price". Always give a price anchor like "~$45" or "$40–$60".
+- PRICE ACCURACY: Use the exact price from Verified Products data. Never invent or estimate prices. If the price field says "$67.99", write "$67.99". Only use "~$X" format if the product data has no price at all.
 - FOMO: Every product needs the red Pro Tip line (step 7d). Season or stock specific.
 - CTA: Every product needs the orange Amazon button (step 7e). No exceptions.
 - Only use Verified Products — never fabricate.
@@ -283,8 +283,9 @@ def _crawl_product_details(url: str, language: str) -> dict:
 
 def _search_products(keyword: str, language: str) -> list[dict]:
     """
-    SerpAPI로 쿠팡(KO) 또는 아마존(EN) 실제 상품을 검색 후
-    제품 페이지를 실시간 크롤링해 스펙·가격·특징까지 보강.
+    SerpAPI Google Shopping으로 실제 상품·가격 수집.
+    EN: Google Shopping (amazon 우선) → 실제 가격 포함
+    KO: Google Shopping (coupang 우선) → 실제 가격 포함
     DRY_RUN 또는 키 없으면 더미 반환.
 
     Returns: [{"name": str, "url": str, "price": str, "features": [...], ...}, ...]
@@ -293,11 +294,92 @@ def _search_products(keyword: str, language: str) -> list[dict]:
         logger.info("[DRY] _search_products: returning dummy products for '%s'", keyword)
         return _dummy_products(keyword, language)
 
+    # ── Google Shopping API (실제 가격 포함) ─────────────────────────
+    shopping_params = {
+        "engine":  "google_shopping",
+        "q":       keyword,
+        "api_key": config.SERPAPI_KEY,
+        "num":     10,
+        "gl":      "kr" if language == "ko" else "us",
+        "hl":      "ko" if language == "ko" else "en",
+    }
+
+    products = []
+    try:
+        resp = httpx.get("https://serpapi.com/search", params=shopping_params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+
+        for item in data.get("shopping_results", []):
+            title  = item.get("title", "")
+            link   = item.get("link", "") or item.get("product_link", "")
+            source = item.get("source", "").lower()
+
+            # EN: Amazon 우선, KO: Coupang 우선
+            if language == "en" and "amazon" not in source:
+                continue
+            if language == "ko" and "coupang" not in source:
+                continue
+
+            # 실제 가격 (Google Shopping이 직접 제공)
+            price = item.get("price", "")
+            if not price and item.get("extracted_price"):
+                price = f"${item['extracted_price']:.2f}" if language == "en" \
+                        else f"{int(item['extracted_price']):,}원"
+
+            rating       = str(item.get("rating", ""))
+            review_count = str(item.get("reviews", ""))
+
+            products.append({
+                "name":         title[:80],
+                "url":          link,
+                "price":        price,
+                "snippet":      item.get("snippet", "")[:150],
+                "features":     [],
+                "rating":       rating,
+                "review_count": review_count,
+                "source":       source,
+            })
+
+            if len(products) >= 5:
+                break
+
+        logger.info("[Shopping] Found %d products for '%s'", len(products), keyword)
+
+    except Exception as e:
+        logger.warning("SerpAPI Shopping search failed: %s", e)
+
+    # ── 가격 없는 제품은 organic 검색으로 보완 ───────────────────────
+    if len(products) < 3:
+        logger.info("Shopping results insufficient — falling back to organic search")
+        products = _search_products_organic(keyword, language)
+
+    # ── 가격이 빈 제품에만 크롤링 시도 (보완용) ──────────────────────
+    for product in products:
+        if not product.get("price") and product.get("url"):
+            details = _crawl_product_details(product["url"], language)
+            if details.get("price"):
+                product["price"] = details["price"]
+            if details.get("features"):
+                product["features"] = details["features"]
+            if details.get("rating") and not product.get("rating"):
+                product["rating"] = details["rating"]
+
+    if not products:
+        logger.warning("No products found for '%s' — using dummy", keyword)
+        return _dummy_products(keyword, language)
+
+    logger.info("Final: %d verified products for '%s'", len(products), keyword)
+    return products
+
+
+def _search_products_organic(keyword: str, language: str) -> list[dict]:
+    """Google Shopping 결과 부족 시 organic 검색 폴백."""
     current_year = datetime.date.today().year
     if language == "ko":
         query = f"site:coupang.com {keyword} 로켓배송"
     else:
-        query = f"site:amazon.com {keyword} best seller {current_year}"
+        query = f"site:amazon.com {keyword} {current_year}"
 
     params = {
         "q":       query,
@@ -307,64 +389,39 @@ def _search_products(keyword: str, language: str) -> list[dict]:
         "hl":      "ko" if language == "ko" else "en",
     }
 
+    products = []
     try:
         resp = httpx.get("https://serpapi.com/search", params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
+
+        for item in data.get("organic_results", []):
+            url     = item.get("link", "")
+            snippet = item.get("snippet", "")
+
+            if language == "ko" and "coupang.com/vp/products" not in url:
+                continue
+            if language == "en" and "amazon.com" not in url:
+                continue
+
+            price_match = re.search(r'[\$₩][\d,]+(?:\.\d+)?|[\d,]+원', snippet)
+            price = price_match.group(0) if price_match else ""
+
+            products.append({
+                "name":     item.get("title", "")[:80],
+                "url":      url,
+                "price":    price,
+                "snippet":  snippet[:150],
+                "features": [],
+                "rating":   "",
+                "source":   "coupang" if language == "ko" else "amazon",
+            })
+
+            if len(products) >= 5:
+                break
     except Exception as e:
-        logger.warning("SerpAPI product search failed: %s — using dummy", e)
-        return _dummy_products(keyword, language)
+        logger.warning("Organic fallback failed: %s", e)
 
-    products = []
-    for item in data.get("organic_results", []):
-        title   = item.get("title", "")
-        url     = item.get("link", "")
-        snippet = item.get("snippet", "")
-
-        # 쿠팡/아마존 상품 페이지만 필터
-        if language == "ko" and "coupang.com/vp/products" not in url:
-            continue
-        if language == "en" and "amazon.com" not in url:
-            continue
-
-        # snippet에서 가격 파싱 (크롤링 전 기본값)
-        price_match = re.search(r'[\$₩][\d,]+|[\d,]+원', snippet)
-        price = price_match.group(0) if price_match else "가격 확인 필요"
-
-        product = {
-            "name":     title[:80],
-            "url":      url,
-            "price":    price,
-            "snippet":  snippet[:150],
-            "features": [],
-            "rating":   "",
-            "source":   "coupang" if language == "ko" else "amazon",
-        }
-
-        # ── 실시간 제품 페이지 크롤링으로 스펙 보강 ──────────────────
-        details = _crawl_product_details(url, language)
-        if details:
-            if details.get("name"):
-                product["name"] = details["name"]
-            if details.get("price"):
-                product["price"] = details["price"]
-            if details.get("features"):
-                product["features"] = details["features"]
-            if details.get("rating"):
-                product["rating"] = details["rating"]
-            if details.get("review_count"):
-                product["review_count"] = details["review_count"]
-            logger.info("Crawled product details for: %s", product["name"][:50])
-
-        products.append(product)
-        if len(products) >= 5:
-            break
-
-    if not products:
-        logger.warning("No products found via SerpAPI for '%s' — using dummy", keyword)
-        return _dummy_products(keyword, language)
-
-    logger.info("Found %d verified products for '%s'", len(products), keyword)
     return products
 
 
