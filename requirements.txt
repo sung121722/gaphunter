@@ -14,9 +14,10 @@ google-auth>=2.29.0
 google-auth-httplib2>=0.2.0
 google-auth-oauthlib>=1.2.0
 
-# ── Prediction (dummy phase) ──────────────────────────────
+# ── Prediction ────────────────────────────────────────────
 numpy>=1.26.0
-scikit-learn>=1.4.0      # linear regression dummy predictor
+scipy>=1.12.0            # predictor_v2: 모멘텀 선형회귀 (Colab 의존성 제거)
+scikit-learn>=1.4.0      # predictor.py 레거시 폴백 (sklearn)
 
 # ── Claude API ────────────────────────────────────────────
 anthropic>=0.28.0

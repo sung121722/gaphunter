@@ -23,6 +23,7 @@ from core.predictor  import run_predictions
 from core.scorer     import score_gap
 from core.generator  import generate_post
 from core.publisher  import publish
+from core.publish_governor import PublishGovernor
 
 LANG      = "en"
 GEO       = "US"
@@ -103,6 +104,23 @@ if _kw.lower().startswith("best "):
 else:
     title = f"Best {_kw_title} — Tested & Reviewed {best_gap['predicted_gap_date'][:4]}"
 content = post_result["content"]
+
+# ── GOVERNOR: 발행 전 품질 게이트 ────────────────────────────────────────────
+_gov_log = Path(__file__).parent.parent / "wiki" / "publish_governor_log.json"
+_governor = PublishGovernor(log_path=str(_gov_log))
+_approval = _governor.approve(content, title)
+
+for _w in _approval.warnings:
+    print(f"[GOVERNOR] WARNING: {_w}")
+
+if not _approval.approved:
+    print(f"[GOVERNOR] BLOCKED (품질 기준 미달):")
+    for _r in _approval.rejection_reasons:
+        print(f"  -> {_r}")
+    sys.exit(1)
+
+print(f"[GOVERNOR] APPROVED | quality={_approval.quality_score:.0f} | words={_approval.word_count}")
+
 pub     = publish(title, content, language=LANG, keyword=best_keyword, dry_run=False)
 
 status   = pub.get("status", "error")
@@ -112,6 +130,9 @@ products = post_result.get("verified_products", [])
 if status == "error":
     reason = pub.get("reason", "unknown")
     print(f"[EN] 발행 실패: {reason[:200]}")
+else:
+    # 발행 성공 시 governor 로그 기록
+    _governor.record_publish(title, content, _approval.quality_score)
 
 log_keyword(best_keyword, LANG, post_result["file_path"], products, status)
 

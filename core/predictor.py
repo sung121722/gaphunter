@@ -18,6 +18,15 @@ import config
 
 logger = logging.getLogger(__name__)
 
+# predictor_v2: scipy 기반 모멘텀 회귀 (Colab/ngrok 의존성 제거)
+try:
+    from core.predictor_v2 import predict_demand as _v2_predict
+    PREDICTOR_V2_AVAILABLE = True
+    logger.debug("[PREDICTOR] predictor_v2 로드 완료 (scipy 모멘텀 회귀)")
+except ImportError:
+    PREDICTOR_V2_AVAILABLE = False
+    logger.warning("[PREDICTOR] predictor_v2 미로드. sklearn 폴백 사용.")
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def _series_to_array(trend_series: list[dict]) -> tuple[np.ndarray, np.ndarray]:
@@ -202,16 +211,34 @@ def predict_demand(trend_series: list[dict], horizon: int = 30,
     x, values = _series_to_array(trend_series)
     mean_val = float(np.mean(values))
 
-    if config.DRY_RUN_MODE or not config.COLAB_PREDICTOR_URL:
-        logger.info("[%s] predict_demand: linear regression (%d points → +%d)",
-                    "DRY" if config.DRY_RUN_MODE else "LIVE_FALLBACK",
-                    len(values), horizon)
+    if PREDICTOR_V2_AVAILABLE:
+        # predictor_v2: scipy 모멘텀 회귀 (신뢰도 높음, Colab 불필요)
+        v2 = _v2_predict(values.tolist(), keyword=keyword)
+        # v2.demand_growth (0~1) -> growth_rate (-1~1) 변환 (scorer 호환)
+        growth_rate = float(np.clip((v2.demand_growth - 0.5) * 2.0, -1.0, 1.0))
+        result = {
+            "forecast":         [],   # 타이밍 스코어는 계절 휴리스틱 폴백 사용
+            "confidence_lower": [],
+            "confidence_upper": [],
+            "slope":            v2.trend_slope,
+            "growth_rate":      growth_rate,
+            "r_squared":        v2.r_squared,
+            "confidence":       v2.confidence,
+            "model":            v2.method,
+        }
+        logger.info(
+            "[V2] predict_demand: %s | growth_rate=%.3f | decay_hint=%.3f | R2=%.3f",
+            v2.method, growth_rate, v2.decay_prob, v2.r_squared,
+        )
+    elif config.DRY_RUN_MODE or not config.COLAB_PREDICTOR_URL:
+        logger.info("[%s] predict_demand: sklearn linear regression (%d points)",
+                    "DRY" if config.DRY_RUN_MODE else "LIVE_FALLBACK", len(values))
         result = _linear_forecast(values, horizon)
+        result["growth_rate"] = _slope_to_growth_rate(result.get("slope", 0.0), mean_val)
     else:
-        logger.info("[LIVE] predict_demand: TimesFM (%d points → +%d)", len(values), horizon)
+        logger.info("[LIVE] predict_demand: TimesFM (%d points -> +%d)", len(values), horizon)
         result = _timesfm_forecast(values.tolist(), horizon)
-
-    result["growth_rate"] = _slope_to_growth_rate(result.get("slope", 0.0), mean_val)
+        result["growth_rate"] = _slope_to_growth_rate(result.get("slope", 0.0), mean_val)
 
     # 계절성 floor: 캠핑 키워드 4월인데 growth_rate가 0에 가깝면
     # 그건 더미 데이터 노이즈 때문 — seasonal floor로 보정

@@ -23,6 +23,15 @@ import config
 
 logger = logging.getLogger(__name__)
 
+# system_prompt_builder: 카테고리별 동적 시스템 프롬프트
+try:
+    from core.system_prompt_builder import build_system_prompt as _build_system_prompt
+    SYSTEM_PROMPT_BUILDER_AVAILABLE = True
+    logger.debug("[GENERATOR] system_prompt_builder 로드 완료")
+except ImportError:
+    SYSTEM_PROMPT_BUILDER_AVAILABLE = False
+    logger.warning("[GENERATOR] system_prompt_builder 미로드. 기본 SYSTEM_PROMPT 사용.")
+
 
 # ─── Prompt templates ─────────────────────────────────────────────────────────
 
@@ -654,7 +663,12 @@ def _claude_post(keyword: str, gap_data: dict, language: str,
                   products: list[dict]) -> str:
     import anthropic
 
-    sys_prompt = SYSTEM_PROMPT_KO if language == "ko" else SYSTEM_PROMPT
+    if language == "ko":
+        sys_prompt = SYSTEM_PROMPT_KO
+    elif SYSTEM_PROMPT_BUILDER_AVAILABLE:
+        sys_prompt = _build_system_prompt("camping")
+    else:
+        sys_prompt = SYSTEM_PROMPT  # fallback: 기존 하드코딩 프롬프트
     client     = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
     user_prompt = _build_user_prompt(keyword, gap_data, language, products)
 
@@ -857,7 +871,12 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
             )
 
             import anthropic as _ant
-            sys_prompt = SYSTEM_PROMPT_KO if language == "ko" else SYSTEM_PROMPT
+            if language == "ko":
+                sys_prompt = SYSTEM_PROMPT_KO
+            elif SYSTEM_PROMPT_BUILDER_AVAILABLE:
+                sys_prompt = _build_system_prompt("camping")
+            else:
+                sys_prompt = SYSTEM_PROMPT
             client2    = _ant.Anthropic(api_key=config.ANTHROPIC_API_KEY)
             user_prompt2 = _build_user_prompt(keyword, gap_data, language, products) + retry_note
             msg2 = client2.messages.create(
