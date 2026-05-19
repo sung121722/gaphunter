@@ -23,7 +23,9 @@ from core.predictor  import run_predictions
 from core.scorer     import score_gap
 from core.generator  import generate_post
 from core.publisher  import publish
-from core.publish_governor import PublishGovernor
+from core.publish_governor    import PublishGovernor
+from core.competition_analyzer import analyze_competition, analyze_timing, adapt_competitors
+from core.gsc_tracker          import GSCTracker
 
 LANG      = "en"
 GEO       = "US"
@@ -45,7 +47,16 @@ for kw in candidates:
     print(f"\n[EN] 분석 중: '{kw}'")
     snapshot    = collect(kw, geo=GEO)
     predictions = run_predictions(snapshot)
-    gap_result  = score_gap(kw, predictions)
+
+    # ── competition_analyzer: 실제 경쟁 갭 + 타이밍 분석 ──────────
+    _adapted       = adapt_competitors(snapshot.get("competitors", []))
+    _trends_float  = [row["value"] for row in snapshot.get("trend_series", [])]
+    _comp_result   = analyze_competition(_adapted)
+    _timing_result = analyze_timing(_trends_float)
+
+    gap_result  = score_gap(kw, predictions,
+                            competition_gap_override=_comp_result.score,
+                            timing_advantage_override=_timing_result.score)
     gap_result["competitors"] = snapshot.get("competitors", [])
     score = gap_result["gap_score"]
 
@@ -76,7 +87,13 @@ if best_score < MIN_SCORE:
 
         snapshot    = collect(best_keyword, geo=GEO)
         predictions = run_predictions(snapshot)
-        best_gap    = score_gap(best_keyword, predictions)
+        _adapted_fb      = adapt_competitors(snapshot.get("competitors", []))
+        _trends_fb       = [row["value"] for row in snapshot.get("trend_series", [])]
+        _comp_fb         = analyze_competition(_adapted_fb)
+        _timing_fb       = analyze_timing(_trends_fb)
+        best_gap    = score_gap(best_keyword, predictions,
+                                competition_gap_override=_comp_fb.score,
+                                timing_advantage_override=_timing_fb.score)
         best_gap["competitors"] = snapshot.get("competitors", [])
         best_score  = best_gap["gap_score"]
         is_fallback = True
@@ -133,6 +150,16 @@ if status == "error":
 else:
     # 발행 성공 시 governor 로그 기록
     _governor.record_publish(title, content, _approval.quality_score)
+
+    # GSC 추적 등록 + 색인 요청 (Secrets 없으면 조용히 스킵)
+    if post_url:
+        _gsc = GSCTracker()
+        _gsc.register_post(
+            url=post_url,
+            title=title,
+            keyword=best_keyword,
+            category="camping",
+        )
 
 log_keyword(best_keyword, LANG, post_result["file_path"], products, status)
 

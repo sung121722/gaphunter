@@ -136,7 +136,12 @@ def _action_label(score: int) -> str:
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
-def score_gap(keyword: str, predictions: dict) -> dict:
+def score_gap(
+    keyword: str,
+    predictions: dict,
+    competition_gap_override: float = None,
+    timing_advantage_override: float = None,
+) -> dict:
     """
     Compute gap opportunity score for a single keyword.
 
@@ -147,6 +152,12 @@ def score_gap(keyword: str, predictions: dict) -> dict:
         score = demand_growth(0.4) + decay_prob(0.3)
               + competition_gap(0.2) + timing_advantage(0.1)
     All sub-scores normalized to 0~1, final score scaled to 0~100.
+
+    Args:
+        competition_gap_override:  competition_analyzer.analyze_competition().score
+                                   None이면 내부 _competition_gap_score() 사용
+        timing_advantage_override: competition_analyzer.analyze_timing().score
+                                   None이면 내부 _timing_advantage_score() 사용
     """
     demand   = predictions.get("demand", {})
     comps    = predictions.get("competitor_predictions", [])
@@ -160,10 +171,22 @@ def score_gap(keyword: str, predictions: dict) -> dict:
     age_penalty = primary.get("age_penalty", 0.5)
 
     # Sub-scores (all 0~1)
-    s_demand   = _demand_growth_score(growth_rate)
-    s_decay    = decay_prob                          # already 0~1
-    s_comp     = _competition_gap_score(comps)
-    s_timing   = _timing_advantage_score(forecast, keyword)
+    s_demand = _demand_growth_score(growth_rate)
+    s_decay  = decay_prob                           # already 0~1
+
+    # competition_gap: analyzer 결과 우선, 없으면 내부 계산
+    if competition_gap_override is not None:
+        s_comp = float(competition_gap_override)
+        logger.debug("score_gap: using competition_gap_override=%.3f", s_comp)
+    else:
+        s_comp = _competition_gap_score(comps)
+
+    # timing_advantage: analyzer 결과 우선, 없으면 내부 계산
+    if timing_advantage_override is not None:
+        s_timing = float(timing_advantage_override)
+        logger.debug("score_gap: using timing_advantage_override=%.3f", s_timing)
+    else:
+        s_timing = _timing_advantage_score(forecast, keyword)
 
     # Weighted sum → 0~100 integer
     raw = (
