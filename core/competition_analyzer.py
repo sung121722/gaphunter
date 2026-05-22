@@ -21,13 +21,21 @@ competition_gap과 timing_advantage를 실제로 계산합니다.
                            timing_advantage_override=timing.score)
 """
 
+import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 import math
 import logging
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 logger = logging.getLogger(__name__)
+
+# DRY_RUN 모드 감지 (config import 없이 env 직접 읽어 순환 의존성 방지)
+_DRY_RUN = os.getenv("DRY_RUN_MODE", "false").lower() in ("1", "true", "yes")
 
 
 # ══════════════════════════════════════════════════════════════
@@ -90,11 +98,20 @@ def analyze_competition(serp_results: list) -> CompetitionResult:
         CompetitionResult (.score 를 scorer.py에 직접 전달)
     """
     if not serp_results:
-        logger.warning("[COMPETITION] SERP 데이터 없음. 중간값 0.5 반환.")
+        if _DRY_RUN:
+            logger.warning(
+                "[COMPETITION] ⚠️  DRY_RUN 모드: SERP 데이터 없음 → 중간값(0.5) 사용. "
+                "실 점수는 LIVE 모드에서만 계산됩니다."
+            )
+        else:
+            logger.warning(
+                "[COMPETITION] SERP 데이터 없음 (Google CSE 실패 또는 결과 0건). "
+                "중간값 0.5 반환. GOOGLE_CSE_KEY / GOOGLE_SEARCH_CX 환경변수와 수집 단계를 확인하세요."
+            )
         return CompetitionResult(
             score=0.5, avg_word_count=0, avg_freshness_days=0.0,
             weak_count=0, total_count=0,
-            breakdown={"reason": "no_serp_data"}
+            breakdown={"reason": "no_serp_data", "dry_run": _DRY_RUN}
         )
 
     now = datetime.now(timezone.utc)
@@ -196,10 +213,21 @@ def analyze_timing(trends_data: list) -> TimingResult:
         TimingResult (.score 를 scorer.py에 직접 전달)
     """
     if not trends_data or len(trends_data) < 8:
-        logger.warning("[TIMING] 트렌드 데이터 부족. 중간값 0.5 반환.")
+        if _DRY_RUN:
+            logger.warning(
+                "[TIMING] ⚠️  DRY_RUN 모드: 트렌드 데이터 부족(%d주) → 중간값(0.5) 사용.",
+                len(trends_data) if trends_data else 0,
+            )
+        else:
+            logger.warning(
+                "[TIMING] 트렌드 데이터 부족 (%d주 < 8주 필요). 중간값 0.5 반환. "
+                "pytrends 수집 결과를 확인하세요.",
+                len(trends_data) if trends_data else 0,
+            )
         return TimingResult(
             score=0.5, momentum=1.0, is_seasonal_peak=False,
-            weeks_to_peak=None, breakdown={"reason": "insufficient_data"}
+            weeks_to_peak=None,
+            breakdown={"reason": "insufficient_data", "dry_run": _DRY_RUN}
         )
 
     data      = trends_data[-52:]   # 최대 52주

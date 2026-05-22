@@ -11,8 +11,12 @@ load_dotenv(dotenv_path=pathlib.Path(__file__).parent / ".env", override=True)
 
 # ─── API Keys ────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY      = os.getenv("ANTHROPIC_API_KEY")
-SERPAPI_KEY            = os.getenv("SERPAPI_KEY")
-GOOGLE_CSE_KEY         = os.getenv("GOOGLE_CSE_KEY")          # Search Console API
+SERPAPI_KEY            = os.getenv("SERPAPI_KEY")              # [DEPRECATED] 더 이상 사용 안 함
+GOOGLE_CSE_KEY         = os.getenv("GOOGLE_CSE_KEY")          # Google Custom Search API 키
+GOOGLE_SEARCH_CX       = os.getenv("GOOGLE_SEARCH_CX")        # Custom Search Engine ID
+# True = 전체 웹 검색 가능 (Serper.dev 등 전환 시 설정)
+# False = amazon.com 전용 → SERP 분석은 dummy, 상품 검색만 CSE 사용
+GOOGLE_SEARCH_FULL_WEB = os.getenv("GOOGLE_SEARCH_FULL_WEB", "false").lower() in ("true", "1", "yes")
 GOOGLE_CSE_ID          = os.getenv("GOOGLE_CSE_ID")           # Blogger (EN)
 GOOGLE_CSE_ID_KO       = os.getenv("GOOGLE_CSE_ID_KO")        # Tistory (KO)
 GOOGLE_SERVICE_ACCOUNT = os.getenv("GOOGLE_SERVICE_ACCOUNT")  # JSON path for GSC OAuth
@@ -22,7 +26,7 @@ COLAB_PREDICTOR_URL    = os.getenv("COLAB_PREDICTOR_URL")     # ngrok URL from C
 
 # ─── Cost Control (V1 hard limits) ───────────────────────────────────────────
 MAX_KEYWORDS_PER_RUN       = int(os.getenv("MAX_KEYWORDS_PER_RUN", 3))
-MAX_SERPAPI_CALLS_PER_DAY  = int(os.getenv("MAX_SERPAPI_CALLS_PER_DAY", 10))
+MAX_CSE_CALLS_PER_DAY      = int(os.getenv("MAX_CSE_CALLS_PER_DAY", 80))   # Google CSE 무료 100/일, 여유분 유지
 MAX_CLAUDE_CALLS_PER_RUN   = int(os.getenv("MAX_CLAUDE_CALLS_PER_RUN", 5))
 
 # DRY_RUN_MODE=True → no real API calls, uses dummy data throughout
@@ -62,8 +66,8 @@ TRENDS_DIR = RAW_DIR / "trends"
 # ─── Validation ───────────────────────────────────────────────────────────────
 REQUIRED_KEYS_LIVE = [
     ("ANTHROPIC_API_KEY", ANTHROPIC_API_KEY),
-    ("SERPAPI_KEY",       SERPAPI_KEY),
-    ("GOOGLE_CSE_KEY",    GOOGLE_CSE_KEY),
+    # GOOGLE_CSE_KEY / GOOGLE_SEARCH_CX: 상품 검색용 (없어도 dummy로 동작)
+    # GOOGLE_SEARCH_FULL_WEB=true 일 때만 SERP에 사용됨
 ]
 
 def validate_config(dry_run: bool = DRY_RUN_MODE) -> list[str]:
@@ -82,7 +86,7 @@ def print_config_summary() -> None:
     print(f"{'='*50}")
     print(f"  Mode              : {mode}")
     print(f"  Max keywords/run  : {MAX_KEYWORDS_PER_RUN}")
-    print(f"  Max SerpAPI/day   : {MAX_SERPAPI_CALLS_PER_DAY}")
+    print(f"  Max CSE/day       : {MAX_CSE_CALLS_PER_DAY}  (Google Custom Search, 무료 100/일)")
     print(f"  Max Claude/run    : {MAX_CLAUDE_CALLS_PER_RUN}")
     print(f"  Claude model      : {CLAUDE_MODEL}")
     print(f"  Colab URL set     : {'YES' if COLAB_PREDICTOR_URL else 'NO (using dummy predictor)'}")

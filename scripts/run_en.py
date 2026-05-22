@@ -6,8 +6,10 @@ EN pipeline: 갭 스코어 기반 선별 발행
   2. 각 키워드 전체 분석 (collect → predict → score)
   3. gap_score 가장 높은 키워드 선택
   4. gap_score >= 55 → 정상 발행
-  5. gap_score < 55 → fallback_keywords_en.txt에서 랜덤 키워드로 무조건 발행
-     (블로그 맥박 유지 — 스킵 없음)
+  5. gap_score < 55 → category_config.fallback_keywords에서 랜덤 키워드로 무조건 발행
+     (fallback_keywords_en.txt 존재 시 추가 병합, 블로그 맥박 유지 — 스킵 없음)
+
+카테고리 변경: ACTIVE_CATEGORY 환경변수 또는 category_config.py 수정
 """
 import sys
 import os
@@ -17,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
+from category_config import get_config as _get_category_config
 from core.keyword_scheduler import pick_top_keywords, log_keyword
 from core.collector  import collect
 from core.predictor  import run_predictions
@@ -31,7 +34,23 @@ LANG      = "en"
 GEO       = "US"
 MIN_SCORE = 55
 
-FALLBACK_FILE = Path(__file__).parent.parent / "fallback_keywords_en.txt"
+# ── Fallback 키워드: category_config 우선, 없으면 txt 파일 폴백 ──────────────
+_CATEGORY_CFG    = _get_category_config()
+_FALLBACK_TXT    = Path(__file__).parent.parent / "fallback_keywords_en.txt"
+FALLBACK_KEYWORDS: list = _CATEGORY_CFG.fallback_keywords or []
+
+# txt 파일에 추가 키워드가 있으면 병합 (중복 제거)
+if _FALLBACK_TXT.exists():
+    _txt_lines = [l.strip() for l in _FALLBACK_TXT.read_text(encoding="utf-8").splitlines() if l.strip()]
+    _existing  = {kw.lower() for kw in FALLBACK_KEYWORDS}
+    for _kw in _txt_lines:
+        if _kw.lower() not in _existing:
+            FALLBACK_KEYWORDS.append(_kw)
+            _existing.add(_kw.lower())
+
+print(f"[EN] Fallback 풀: {len(FALLBACK_KEYWORDS)}개 키워드 "
+      f"({len(_CATEGORY_CFG.fallback_keywords)} category + "
+      f"{len(FALLBACK_KEYWORDS) - len(_CATEGORY_CFG.fallback_keywords)} txt 추가)")
 
 # ── 1단계: 트렌드 기반 후보 5개 선정 ──────────────────────────────────────────
 candidates = pick_top_keywords(LANG, n=5)
@@ -81,9 +100,12 @@ is_fallback = False
 if best_score < MIN_SCORE:
     print(f"[EN] gap_score {best_score} < 기준 {MIN_SCORE} — Fallback 모드 진입")
     try:
-        lines = [l.strip() for l in FALLBACK_FILE.read_text(encoding="utf-8").splitlines() if l.strip()]
-        best_keyword = random.choice(lines)
-        print(f"[EN] Fallback 키워드 선택: '{best_keyword}'")
+        if not FALLBACK_KEYWORDS:
+            print("[EN] Fallback 풀이 비어 있습니다. 파이프라인 종료.")
+            sys.exit(1)
+        best_keyword = random.choice(FALLBACK_KEYWORDS)
+        print(f"[EN] Fallback 키워드 선택: '{best_keyword}' "
+              f"(풀 크기: {len(FALLBACK_KEYWORDS)})")
 
         snapshot    = collect(best_keyword, geo=GEO)
         predictions = run_predictions(snapshot)
@@ -113,14 +135,23 @@ if post_result.get("skipped"):
     print(f"[EN] 생성 스킵: {post_result['reason']}")
     sys.exit(0)
 
-# 키워드에 이미 "best"가 있으면 중복 방지
-_kw = best_keyword.strip()
-_kw_title = _kw.title()
-if _kw.lower().startswith("best "):
-    title = f"{_kw_title} — Tested & Reviewed {best_gap['predicted_gap_date'][:4]}"
-else:
-    title = f"Best {_kw_title} — Tested & Reviewed {best_gap['predicted_gap_date'][:4]}"
 content = post_result["content"]
+
+# ── 제목: Claude가 생성한 H1 추출 → 없으면 키워드 기반 폴백 ──────────────────
+import re as _re
+_h1_match = _re.search(r'<h1[^>]*>(.*?)</h1>', content, _re.IGNORECASE | _re.DOTALL)
+if _h1_match:
+    # HTML 태그 제거 후 사용
+    title = _re.sub(r'<[^>]+>', '', _h1_match.group(1)).strip()
+    print(f"[EN] 제목 (H1 추출): {title}")
+else:
+    # 폴백: 키워드 기반 (H1이 없는 비정상 케이스)
+    _kw = best_keyword.strip()
+    _kw_title = _kw.title()
+    _year = best_gap['predicted_gap_date'][:4]
+    title = f"Best {_kw_title} ({_year})" if not _kw.lower().startswith("best ") \
+            else f"{_kw_title} ({_year})"
+    print(f"[EN] 제목 (폴백): {title}")
 
 # ── GOVERNOR: 발행 전 품질 게이트 ────────────────────────────────────────────
 _gov_log = Path(__file__).parent.parent / "wiki" / "publish_governor_log.json"
@@ -158,7 +189,7 @@ else:
             url=post_url,
             title=title,
             keyword=best_keyword,
-            category="camping",
+            category=_CATEGORY_CFG.slug,
         )
 
 log_keyword(best_keyword, LANG, post_result["file_path"], products, status)

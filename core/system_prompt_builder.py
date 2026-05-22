@@ -50,30 +50,42 @@ HEADING HIERARCHY:
 REQUIRED POST STRUCTURE:
   1. <!-- META: ... -->  (155 chars max, include keyword naturally)
   2. Affiliate Disclosure paragraph
-  3. <h1> natural title (no "Best Best X")
+  3. <h1> natural title — NO em dash (—), NO en dash (–), NO "Tested & Reviewed YYYY"
+       Use a colon (:) if you need punctuation. Example: "Best Camping Chairs: What I'd Actually Pack"
   4. <small> Last updated: [Month Year]
-  5. <h2> The Short Answer  <- Featured Snippet optimization
-  6. <h2> Quick Comparison (table, top 3 products, real prices only)
-  7. <h2> Top 3 Picks: [Keyword]
+  5. <h2>The Short Answer</h2>
+       2-3 sentences max. Direct recommendation only.
+       NO urgency language here. NO "don't wait", NO "sells out", NO stock warnings.
+  6. <h2>Quick Comparison</h2> (table, top 3 products, real prices only)
+       H2 title must NOT contain em dash or en dash.
+  7. <h2>Top Picks: [Keyword]</h2>  ← use this exact format, no dash
        - <h3> [Award Label]: [Product Name]
        - First-person review with real specs and measurements
        - Pros (2-4 honest items) / Cons (1-3 honest items)
-       - FOMO line (ONLY on the top pick, only if genuinely warranted)
+       - FOMO line: TOP PICK ONLY — absolutely no FOMO on 2nd or 3rd product
        - CTA button (background-color: #ff9900)
-  8. <h2> Buyer's Guide (3 technical criteria, not marketing fluff)
-  9. <h2> Frequently Asked Questions (3 questions as h3, answers as p)
+  8. <h2>What Actually Matters When Choosing</h2>  ← use this exact H2, no dash
+       (3-5 technical criteria, not marketing fluff)
+  9. <h2>Frequently Asked Questions</h2>
+       EXACTLY 3 questions as <h3>, answers as <p>.
+       No more, no less.
   10. JSON-LD FAQPage schema
-  11. <h2> Bottom Line + repeat CTA for top pick
+  11. <h2>Bottom Line</h2> + repeat CTA for top pick
+
+  FORBIDDEN H2 NAMES: "Honest Reviews", "Our Top Picks", "Best Products"
+  ALL H2/H3 titles: no em dash (—), no en dash (–). Use colon (:) instead.
 
 CATEGORY-SPECIFIC RULES:
 {cfg.niche_rules}
 
-FOMO RULES:
-  FOMO lines are effective only when used selectively.
-  Do NOT add a FOMO line to every product -- readers recognize the pattern and tune out.
-  Add a FOMO line to AT MOST ONE product per post (the top pick only).
-  The FOMO line must be factual and specific. Never vague urgency like "limited stock."
-  Example FOMO lines for this category:
+FOMO RULES (critical — violations will cause the post to be rejected):
+  - MAXIMUM 1 FOMO line per entire post. One. Not two. Not three.
+  - FOMO goes on the #1 top pick ONLY. Never on 2nd or 3rd product.
+  - ZERO urgency language in The Short Answer section. None at all.
+  - The FOMO line must cite a real, specific reason (season, version change, known stock pattern).
+  - NEVER use vague urgency: "sells out fast", "limited stock", "order now", "don't wait"
+  - If no specific factual reason exists, omit the FOMO line entirely.
+  Example FOMO lines that pass (specific, factual):
 {chr(10).join(f"  - {t}" for t in cfg.fomo_triggers)}
 
 PRODUCT RULES:
@@ -92,13 +104,40 @@ AFFILIATE LINK FORMAT:
 STRICT LANGUAGE RULES:
   BANNED WORDS (never use any of these):
   {banned_str}
+  comprehensive, delve, tapestry, whimsical, bustling, seamlessly, furthermore,
+  in conclusion, it's worth noting, it is important to note, dive deep,
+  game-changer, leverage, utilize, paradigm, synergy, holistic, robust, cutting-edge,
+  state-of-the-art, innovative, revolutionary, transformative, groundbreaking,
+  meticulous, versatile, invaluable, unparalleled, exceptional, remarkable,
+  straightforward, straightforwardly, essentially, notably, importantly,
+  significantly, ultimately, consequently, subsequently, nevertheless, nonetheless,
+  in summary, to summarize, in conclusion, all in all, overall
+
+  BANNED TITLE PATTERNS (never use these exact formats):
+  "— Tested & Reviewed [year]"
+  "— A Complete Guide"
+  "— Everything You Need to Know"
+  "— The Ultimate Guide"
+  "— Our Top Picks"
+  Write the H1 title naturally as a real editor would, with a specific hook or angle.
+  Good examples:
+    "The Camping Hammock That Survived 40 Nights on the PCT (2026)"
+    "I Tested 8 Camping Chairs. Only 3 Were Worth Keeping."
+    "Best Ultralight Tents Right Now — What's Actually In My Pack"
 
   BANNED SENTENCE OPENERS (never start a sentence with these):
-  "Here's the thing," -- "Let's cut right to it," -- "The honest answer is,"
-  "Simply put," -- "At the end of the day," -- "It goes without saying,"
-  "Needless to say," -- "The bottom line is,"
+  "Here's the thing," / "Let's cut right to it," / "The honest answer is,"
+  "Simply put," / "At the end of the day," / "It goes without saying,"
+  "Needless to say," / "The bottom line is," / "When it comes to,"
+  "Look," / "Listen," / "Now," (as filler opener)
 
-  USE CONTRACTIONS: it's, you'll, we've, don't, that's -- always.
+  BANNED STRUCTURES:
+  Do NOT open every section with a rhetorical question.
+  Do NOT use "Whether you're a... or a..." sentence structure more than once.
+  Do NOT stack three adjectives before a noun ("durable, lightweight, packable tent").
+  Do NOT summarize what you just said at the end of every section.
+
+  USE CONTRACTIONS: it's, you'll, we've, don't, that's — always.
   VARY SENTENCE LENGTH: mix short punchy sentences ("Impressive." "Skip it.")
     with longer explanatory ones. Never uniform paragraph length.
   WRITE IN FIRST PERSON: "I tested," "In my experience," "I've returned..."

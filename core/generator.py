@@ -32,6 +32,10 @@ except ImportError:
     SYSTEM_PROMPT_BUILDER_AVAILABLE = False
     logger.warning("[GENERATOR] system_prompt_builder 미로드. 기본 SYSTEM_PROMPT 사용.")
 
+# 활성 카테고리 (ACTIVE_CATEGORY 환경변수 → 기본값 "camping")
+import os as _os
+_ACTIVE_CATEGORY: str = _os.getenv("ACTIVE_CATEGORY", "camping")
+
 
 # ─── Prompt templates ─────────────────────────────────────────────────────────
 
@@ -292,80 +296,75 @@ def _crawl_product_details(url: str, language: str) -> dict:
 
 def _search_products(keyword: str, language: str) -> list[dict]:
     """
-    SerpAPI Google Shopping으로 실제 상품·가격 수집.
-    EN: Google Shopping (amazon 우선) → 실제 가격 포함
-    KO: Google Shopping (coupang 우선) → 실제 가격 포함
+    Google Custom Search API로 Amazon/Coupang 상품 URL 수집.
+    가격/리뷰는 상품 페이지 직접 크롤링으로 보완.
     DRY_RUN 또는 키 없으면 더미 반환.
 
     Returns: [{"name": str, "url": str, "price": str, "features": [...], ...}, ...]
     """
-    if config.DRY_RUN_MODE or not config.SERPAPI_KEY:
+    if config.DRY_RUN_MODE or not config.GOOGLE_CSE_KEY or not config.GOOGLE_SEARCH_CX:
         logger.info("[DRY] _search_products: returning dummy products for '%s'", keyword)
         return _dummy_products(keyword, language)
 
-    # ── Google Shopping API (실제 가격 포함) ─────────────────────────
-    shopping_params = {
-        "engine":  "google_shopping",
-        "q":       keyword,
-        "api_key": config.SERPAPI_KEY,
-        "num":     10,
-        "gl":      "kr" if language == "ko" else "us",
-        "hl":      "ko" if language == "ko" else "en",
+    current_year = datetime.date.today().year
+    if language == "ko":
+        query = f"site:coupang.com {keyword} 로켓배송"
+    else:
+        query = f"site:amazon.com {keyword} {current_year}"
+
+    params = {
+        "key": config.GOOGLE_CSE_KEY,
+        "cx":  config.GOOGLE_SEARCH_CX,
+        "q":   query,
+        "num": 10,
+        "gl":  "kr" if language == "ko" else "us",
+        "hl":  "ko" if language == "ko" else "en",
     }
 
     products = []
     try:
-        resp = httpx.get("https://serpapi.com/search", params=shopping_params, timeout=15)
+        resp = httpx.get(
+            "https://www.googleapis.com/customsearch/v1",
+            params=params,
+            timeout=15,
+        )
         resp.raise_for_status()
         data = resp.json()
 
-        for item in data.get("shopping_results", []):
-            title  = item.get("title", "")
-            link   = item.get("link", "") or item.get("product_link", "")
-            source = item.get("source", "").lower()
+        for item in data.get("items", []):
+            url     = item.get("link", "")
+            snippet = item.get("snippet", "")
 
-            # EN: Amazon 우선, KO: Coupang 우선
-            if language == "en" and "amazon" not in source:
+            if language == "ko" and "coupang.com/vp/products" not in url:
                 continue
-            if language == "ko" and "coupang" not in source:
+            if language == "en" and "amazon.com/dp/" not in url and "amazon.com/gp/" not in url:
                 continue
 
-            # 실제 가격 (Google Shopping이 직접 제공)
-            price = item.get("price", "")
-            if not price and item.get("extracted_price"):
-                price = f"${item['extracted_price']:.2f}" if language == "en" \
-                        else f"{int(item['extracted_price']):,}원"
-
-            rating       = str(item.get("rating", ""))
-            review_count = str(item.get("reviews", ""))
+            price_match = re.search(r'\$[\d,]+(?:\.\d+)?|[\d,]+원', snippet)
+            price = price_match.group(0) if price_match else ""
 
             products.append({
-                "name":         title[:80],
-                "url":          link,
+                "name":         item.get("title", "")[:80],
+                "url":          url,
                 "price":        price,
-                "snippet":      item.get("snippet", "")[:150],
+                "snippet":      snippet[:150],
                 "features":     [],
-                "rating":       rating,
-                "review_count": review_count,
-                "source":       source,
+                "rating":       "",
+                "review_count": "",
+                "source":       "coupang" if language == "ko" else "amazon",
             })
 
             if len(products) >= 5:
                 break
 
-        logger.info("[Shopping] Found %d products for '%s'", len(products), keyword)
+        logger.info("[CSE] 상품 %d건 수집: '%s'", len(products), keyword)
 
     except Exception as e:
-        logger.warning("SerpAPI Shopping search failed: %s", e)
+        logger.warning("Google CSE 상품 검색 실패: %s", e)
 
-    # ── 가격 없는 제품은 organic 검색으로 보완 ───────────────────────
-    if len(products) < 3:
-        logger.info("Shopping results insufficient — falling back to organic search")
-        products = _search_products_organic(keyword, language)
-
-    # ── 가격이 빈 제품에만 크롤링 시도 (보완용) ──────────────────────
+    # ── 크롤링으로 가격/리뷰 보완 ────────────────────────────────────
     for product in products:
-        if not product.get("price") and product.get("url"):
+        if product.get("url"):
             details = _crawl_product_details(product["url"], language)
             if details.get("price"):
                 product["price"] = details["price"]
@@ -375,36 +374,32 @@ def _search_products(keyword: str, language: str) -> list[dict]:
                 product["rating"] = details["rating"]
 
     if not products:
-        logger.warning("No products found for '%s' — using dummy", keyword)
+        logger.warning("상품 없음 '%s' — dummy 사용", keyword)
         return _dummy_products(keyword, language)
 
-    logger.info("Final: %d verified products for '%s'", len(products), keyword)
+    logger.info("최종: %d개 상품 확보 '%s'", len(products), keyword)
     return products
 
 
 def _search_products_organic(keyword: str, language: str) -> list[dict]:
-    """Google Shopping 결과 부족 시 organic 검색 폴백."""
+    """[DEPRECATED] _search_products()로 통합됨. 하위 호환 유지용."""
+    return _search_products(keyword, language)
+
+
+def _search_products_organic_unused(keyword: str, language: str) -> list[dict]:
+    """Google Shopping 결과 부족 시 organic 검색 폴백 (구버전 SerpAPI 코드 보관)."""
     current_year = datetime.date.today().year
     if language == "ko":
         query = f"site:coupang.com {keyword} 로켓배송"
     else:
         query = f"site:amazon.com {keyword} {current_year}"
 
-    params = {
-        "q":       query,
-        "api_key": config.SERPAPI_KEY,
-        "num":     10,
-        "gl":      "kr" if language == "ko" else "us",
-        "hl":      "ko" if language == "ko" else "en",
-    }
-
     products = []
     try:
-        resp = httpx.get("https://serpapi.com/search", params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
+        # SerpAPI 제거됨 — 이 함수는 더 이상 호출되지 않음
+        pass
 
-        for item in data.get("organic_results", []):
+        for item in []:
             url     = item.get("link", "")
             snippet = item.get("snippet", "")
 
@@ -666,7 +661,7 @@ def _claude_post(keyword: str, gap_data: dict, language: str,
     if language == "ko":
         sys_prompt = SYSTEM_PROMPT_KO
     elif SYSTEM_PROMPT_BUILDER_AVAILABLE:
-        sys_prompt = _build_system_prompt("camping")
+        sys_prompt = _build_system_prompt(_ACTIVE_CATEGORY)
     else:
         sys_prompt = SYSTEM_PROMPT  # fallback: 기존 하드코딩 프롬프트
     client     = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
@@ -674,13 +669,33 @@ def _claude_post(keyword: str, gap_data: dict, language: str,
 
     logger.info("Calling Claude API for '%s' (%s) with %d verified products",
                 keyword, language, len(products))
-    message = client.messages.create(
-        model=config.CLAUDE_MODEL,
-        max_tokens=8192,
-        system=sys_prompt,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    return message.content[0].text
+
+    # 529 Overloaded 재시도 (최대 3회, 지수 백오프)
+    last_error = None
+    for attempt in range(3):
+        try:
+            message = client.messages.create(
+                model=config.CLAUDE_MODEL,
+                max_tokens=8192,
+                system=sys_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+            return message.content[0].text
+        except Exception as e:
+            err_str = str(e)
+            if "529" in err_str or "overloaded" in err_str.lower():
+                wait = 30 * (2 ** attempt)   # 30s → 60s → 120s
+                logger.warning(
+                    "[Claude] 529 Overloaded (시도 %d/3) — %d초 후 재시도...",
+                    attempt + 1, wait,
+                )
+                print(f"  [Claude] 서버 과부하 (529) — {wait}초 대기 후 재시도 ({attempt+1}/3)")
+                time.sleep(wait)
+                last_error = e
+            else:
+                raise  # 529 외 에러는 즉시 올림
+
+    raise last_error  # 3회 모두 실패
 
 
 # ─── Step 4: 후처리 ───────────────────────────────────────────────────────────
@@ -782,6 +797,68 @@ def _convert_markdown_links(text: str) -> str:
     )
 
 
+def _post_process_content(html: str) -> str:
+    """
+    Claude 출력 후처리:
+    1. H1/H2/H3 제목에서 em dash(—) 및 en dash(–) 제거
+    2. FOMO(🔥 Pro Tip) 최대 1개 유지 — 2번째부터 삭제
+    3. Short Answer 섹션 내 FOMO 문구 제거
+    """
+
+    # ── 1. 제목 em dash / en dash 제거 ───────────────────────────────
+    def _clean_heading(m: re.Match) -> str:
+        tag   = m.group(1)   # h1, h2, h3
+        attrs = m.group(2)   # 태그 속성 (있을 경우)
+        inner = m.group(3)   # 제목 텍스트
+        # — (em dash U+2014), – (en dash U+2013), - 앞뒤 공백 정리
+        cleaned = re.sub(r'\s*[—–]\s*', ': ', inner).strip()
+        # 이중 콜론 방지
+        cleaned = re.sub(r':\s*:', ':', cleaned)
+        return f'<{tag}{attrs}>{cleaned}</{tag}>'
+
+    html = re.sub(
+        r'<(h[123])([^>]*)>(.*?)</h[123]>',
+        _clean_heading,
+        html,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    # ── 2. FOMO(🔥 Pro Tip) 2개 이상이면 2번째부터 삭제 ─────────────
+    fomo_pattern = re.compile(
+        r'<p[^>]*>.*?🔥.*?Pro Tip.*?</p>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    fomo_matches = list(fomo_pattern.finditer(html))
+    if len(fomo_matches) > 1:
+        # 뒤에서부터 삭제 (인덱스 유지)
+        for m in reversed(fomo_matches[1:]):
+            html = html[:m.start()] + html[m.end():]
+        logger.debug("[POST_PROCESS] FOMO %d개 → 1개로 축소", len(fomo_matches))
+
+    # ── 3. Short Answer 섹션 내 FOMO 성격 문구 제거 ──────────────────
+    # "don't wait", "order now", "sells out", "stock" 등 Short Answer에만 적용
+    short_answer_pattern = re.compile(
+        r'(<h2[^>]*>[^<]*(?:short answer|quick answer)[^<]*</h2>)(.*?)(<h2)',
+        re.IGNORECASE | re.DOTALL,
+    )
+    def _clean_short_answer(m: re.Match) -> str:
+        heading = m.group(1)
+        body    = m.group(2)
+        next_h2 = m.group(3)
+        # 긴급성 유발 문장 제거 (문장 단위)
+        urgency_re = re.compile(
+            r'[^.!?]*(?:don\'t wait|order now|sells? out|stock(?:s)? (?:thin|drop|move|limited)|'
+            r'summer \d{4} (?:is|are) shaping|before (?:july|june|may|peak season))[^.!?]*[.!?]',
+            re.IGNORECASE,
+        )
+        body = urgency_re.sub('', body).strip()
+        return heading + body + next_h2
+
+    html = short_answer_pattern.sub(_clean_short_answer, html)
+
+    return html
+
+
 # ─── Dummy generator (DRY RUN) ────────────────────────────────────────────────
 
 def _dummy_post(keyword: str, language: str, products: list[dict]) -> str:
@@ -874,7 +951,7 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
             if language == "ko":
                 sys_prompt = SYSTEM_PROMPT_KO
             elif SYSTEM_PROMPT_BUILDER_AVAILABLE:
-                sys_prompt = _build_system_prompt("camping")
+                sys_prompt = _build_system_prompt(_ACTIVE_CATEGORY)
             else:
                 sys_prompt = SYSTEM_PROMPT
             client2    = _ant.Anthropic(api_key=config.ANTHROPIC_API_KEY)
@@ -897,6 +974,7 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
 
     content = _inject_affiliate_links(content, language)
     content = _convert_markdown_links(content)
+    content = _post_process_content(content)   # em dash 제거, FOMO 1개 제한
 
     # 쿠팡 파트너스 필수 문구 자동 삽입 (KO)
     if language == "ko" and "쿠팡 파트너스 활동의 일환" not in content:

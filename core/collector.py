@@ -315,36 +315,54 @@ def merge_trend_data(pytrends_data: dict, gsc_data: dict) -> list[dict]:
 def get_serp_rankings(keyword: str, num_results: int = 10) -> list[dict]:
     """
     Returns top N SERP results with rank, URL, title.
-    DRY_RUN: dummy data. LIVE: SerpAPI.
+    DRY_RUN: dummy data. LIVE: Google Custom Search API (무료, 100회/일).
     """
     if config.DRY_RUN_MODE:
         logger.info("[DRY] get_serp_rankings: %s", keyword)
         return _dummy_serp(keyword, num_results)
 
-    if not config.SERPAPI_KEY:
-        logger.warning("SERPAPI_KEY not set — returning empty")
-        return []
+    if not config.GOOGLE_SEARCH_FULL_WEB:
+        # CSE가 특정 사이트 전용(amazon.com 등)이면 SERP 경쟁 분석에 쓸 수 없음
+        # → dummy 반환, competition_gap은 0.5 고정으로 운영
+        # 전체 웹 검색이 필요하면 GOOGLE_SEARCH_FULL_WEB=true + Serper.dev 전환
+        logger.info("[SERP] GOOGLE_SEARCH_FULL_WEB=false → dummy SERP 사용 (competition_gap 0.5 고정)")
+        return _dummy_serp(keyword, num_results)
+
+    if not config.GOOGLE_CSE_KEY or not config.GOOGLE_SEARCH_CX:
+        logger.warning("GOOGLE_CSE_KEY 또는 GOOGLE_SEARCH_CX 미설정 — dummy SERP 반환.")
+        return _dummy_serp(keyword, num_results)
 
     params = {
-        "q": keyword,
-        "api_key": config.SERPAPI_KEY,
-        "num": num_results,
-        "gl": "us",
-        "hl": "en",
+        "key": config.GOOGLE_CSE_KEY,
+        "cx":  config.GOOGLE_SEARCH_CX,
+        "q":   keyword,
+        "num": min(num_results, 10),   # Google CSE 최대 10개/요청
+        "gl":  "us",
+        "hl":  "en",
     }
-    resp = httpx.get("https://serpapi.com/search", params=params, timeout=15)
-    resp.raise_for_status()
-    data = resp.json()
+    try:
+        resp = httpx.get(
+            "https://www.googleapis.com/customsearch/v1",
+            params=params,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
-    results = []
-    for i, item in enumerate(data.get("organic_results", [])[:num_results], start=1):
-        results.append({
-            "rank": i,
-            "url": item.get("link", ""),
-            "title": item.get("title", ""),
-            "snippet": item.get("snippet", ""),
-        })
-    return results
+        results = []
+        for i, item in enumerate(data.get("items", [])[:num_results], start=1):
+            results.append({
+                "rank":    i,
+                "url":     item.get("link", ""),
+                "title":   item.get("title", ""),
+                "snippet": item.get("snippet", ""),
+            })
+        logger.info("[CSE] SERP %d건 수집: '%s'", len(results), keyword)
+        return results
+
+    except Exception as e:
+        logger.warning("Google CSE SERP 수집 실패 (%s) — dummy 반환", e)
+        return _dummy_serp(keyword, num_results)
 
 
 def crawl_competitor_page(url: str) -> dict:

@@ -34,16 +34,28 @@ collector.py → predictor.py → scorer.py → generator.py → 블로그 발�
 ## Gap Score 공식
 
 ```
-gap_score = demand_growth(0.4) + decay_prob(0.3)
-          + competition_gap(0.2) + timing_advantage(0.1)
+gap_score = demand_growth(w1) + decay_prob(w2)
+          + competition_gap(w3) + timing_advantage(w4)
 ```
+
+가중치는 카테고리별로 다름 (`category_config.py`의 `GapWeights`):
+
+| 카테고리 | demand_growth | decay_prob | competition_gap | timing_advantage |
+|----------|:---:|:---:|:---:|:---:|
+| camping  | 0.35 | 0.35 | 0.20 | 0.10 |
+| kitchen  | 0.40 | 0.25 | 0.25 | 0.10 |
+| pet      | 0.40 | 0.20 | 0.30 | 0.10 |
+| home_office | 0.45 | 0.20 | 0.25 | 0.10 |
+| fitness  | 0.35 | 0.30 | 0.25 | 0.10 |
+
+실제 경쟁/타이밍 점수는 `competition_analyzer.py`가 SERP 데이터로 계산 후 `scorer.py`에 override로 전달.
 
 | 구간 | 액션 |
 |------|------|
 | 80+ | GENERATE_NOW |
-| 60~79 | GENERATE_SOON — 발행 기준 (MIN_SCORE) |
-| 40~59 | QUEUE |
-| 0~39 | MONITOR |
+| 60~79 | GENERATE_SOON |
+| 55~59 | BORDERLINE — fallback 없이 발행 (MIN_SCORE=55) |
+| 0~54 | USE_FALLBACK → category_config.fallback_keywords에서 발행 |
 
 **임계값(GAP_SCORE_HIGH=60)은 절대 낮추지 않는다.**
 빈자리가 없으면 그날 스킵하고 내일 다시 확인한다.

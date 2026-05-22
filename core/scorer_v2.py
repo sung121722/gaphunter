@@ -1,8 +1,12 @@
 """
 scorer_v2.py
 ─────────────
-카테고리별 가중치를 사용하는 Gap Score 계산기.
-category_config.py의 GapWeights를 활용합니다.
+[DEPRECATED] 이 모듈은 scorer.py에 통합되었습니다.
+scorer.py의 score_gap()이 competition_gap_override / timing_advantage_override
+파라미터를 통해 동일한 기능을 제공합니다.
+
+카테고리별 가중치 로직은 category_config.py → scorer.py로 이전 예정.
+현재는 하위 호환성을 위해 유지. 직접 import 하지 마세요.
 
 사용:
     from core.scorer_v2 import calculate_gap_score, should_generate

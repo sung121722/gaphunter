@@ -31,8 +31,8 @@ jobs:
         id: run
         env:
           ANTHROPIC_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
-          SERPAPI_KEY:           ${{ secrets.SERPAPI_KEY }}
           GOOGLE_CSE_KEY:        ${{ secrets.GOOGLE_CSE_KEY }}
+          GOOGLE_SEARCH_CX:      ${{ secrets.GOOGLE_SEARCH_CX }}
           AMAZON_ASSOCIATES_ID:  ${{ secrets.AMAZON_ASSOCIATES_ID }}
           BLOGGER_BLOG_ID:       ${{ secrets.BLOGGER_BLOG_ID }}
           GOOGLE_REFRESH_TOKEN:  ${{ secrets.GOOGLE_REFRESH_TOKEN }}
@@ -48,5 +48,57 @@ jobs:
           git config user.email "bot@gaphunter.com"
           git add posts/ wiki/
           git diff --staged --quiet || git commit -m "feat(en): daily post - $(date +%Y-%m-%d)"
+          git pull --rebase origin main
+          git push
+
+  # ── GSC 성과 체크 (30일 이상 지난 글 자동 점검) ──────────────────────────────
+  gsc-performance-check:
+    name: GSC 30일 성과 체크
+    runs-on: ubuntu-latest
+    # EN 발행이 끝난 뒤에 실행 (성과 체크는 독립적이므로 실패해도 파이프라인 안 죽음)
+    needs: publish-en
+    if: always()
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run GSC performance check
+        env:
+          GSC_SERVICE_ACCOUNT_JSON: ${{ secrets.GSC_SERVICE_ACCOUNT_JSON }}
+          GSC_SITE_URL:             ${{ secrets.GSC_SITE_URL }}
+        run: |
+          python - <<'EOF'
+          import sys, os
+          from pathlib import Path
+          sys.path.insert(0, ".")
+          from core.gsc_tracker import GSCTracker
+          gsc = GSCTracker()
+          results = gsc.run_performance_check()
+          if results:
+              low = [r for r in results if r.is_low_perf]
+              print(f"[GSC] 체크 완료: {len(results)}건 (저성과 {len(low)}건)")
+              for r in low:
+                  print(f"  LOW: {r.title} | clicks={r.clicks_30d} | pos={r.avg_position:.1f}")
+          else:
+              print("[GSC] 체크 대상 없음 (30일 미만 포스트만 있음 또는 GSC 미연동)")
+          EOF
+
+      - name: Commit GSC report
+        run: |
+          git config user.name  "GapHunter Bot"
+          git config user.email "bot@gaphunter.com"
+          git add wiki/gsc_performance.json wiki/gsc_tracking.json 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "chore: GSC 성과 체크 - $(date +%Y-%m-%d)"
           git pull --rebase origin main
           git push
