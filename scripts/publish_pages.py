@@ -142,7 +142,7 @@ of our posts? We'd like to hear from you.</p>
 
 <h3>General Inquiries</h3>
 <p>For general questions about our content or recommendations:</p>
-<p>📧 Email: <strong>stuffnod.gear@gmail.com</strong></p>
+<p>📧 Email: <strong>kang020672@gmail.com</strong></p>
 
 <h3>Corrections & Updates</h3>
 <p>If you've found outdated pricing, a discontinued product, or a factual error in one
