@@ -58,10 +58,22 @@ REQUIRED POST STRUCTURE:
        NO urgency language here. NO "don't wait", NO "sells out", NO stock warnings.
   6. <h2>Quick Comparison</h2> (table, top 3 products, real prices only)
        H2 title must NOT contain em dash or en dash.
+       Table MUST include these columns: Product | Award | Price | Weight | Best For
+       Use real spec numbers. If weight is unknown, write "check specs" — never omit the column.
   7. <h2>Top Picks: [Keyword]</h2>  ← use this exact format, no dash
+       MANDATORY AWARD LABELS — assign one of these to each product:
+         Product #1: "Best Overall: [Product Name]"
+         Product #2: ONE of → "Best Budget:", "Best Ultralight:", "Best for Beginners:",
+                               "Best for Car Camping:", "Best Premium:", "Best Packable:"
+                     Choose based on what the product actually excels at. Never repeat labels.
+         Product #3: A different label from the list above. Never "Best Overall" for #2 or #3.
+
+       Per-product structure:
        - <h3> [Award Label]: [Product Name]
        - First-person review with real specs and measurements
        - Pros (2-4 honest items) / Cons (1-3 honest items)
+       - <p><strong>Best for:</strong> [one sentence — exactly who should buy this]</p>
+         Example: "Best for weekend hikers who want comfort without carrying a full chair."
        - FOMO line: TOP PICK ONLY — absolutely no FOMO on 2nd or 3rd product
        - CTA button (background-color: #ff9900)
   8. <h2>What Actually Matters When Choosing</h2>  ← use this exact H2, no dash
@@ -206,14 +218,21 @@ PRODUCT DATA (use only these -- do not fabricate products):
 
 INSTRUCTIONS:
 1. Pick the top 3 products. Choose based on rating and review count.
-2. Write each review in first person, as if you tested the product yourself.
-3. Include real specs: weight, dimensions, materials, compatibility.
-4. For cons: write the real weaknesses. Do not pad with fake praise.
-5. Add a FOMO line to the #1 pick ONLY, and only if it fits naturally.
-6. Buyer's Guide: explain 3 real technical criteria for {cfg.name}.
+2. Assign mandatory award labels:
+   - Product #1: "Best Overall: [Name]"
+   - Product #2: Choose ONE that fits — Best Budget / Best Ultralight / Best for Beginners /
+                 Best for Car Camping / Best Premium / Best Packable
+   - Product #3: A different label. Never repeat. Never "Best Overall" for #2 or #3.
+3. Write each review in first person, as if you tested the product yourself.
+4. Include real specs: weight, dimensions, materials, compatibility.
+5. End each product section with:
+   <p><strong>Best for:</strong> [one sentence — who should buy this specifically]</p>
+6. For cons: write the real weaknesses. Do not pad with fake praise.
+7. Add a FOMO line to the #1 pick ONLY, and only if it fits naturally.
+8. Buyer's Guide: explain 3 real technical criteria for {cfg.name}.
    Not generic. Specific to what matters in this category.
-7. FAQ: address the 3 most common real questions buyers search on Google.
-8. Price filter: skip any product outside ${cfg.min_price:.0f}-${cfg.max_price:.0f}.
+9. FAQ: address the 3 most common real questions buyers search on Google.
+10. Price filter: skip any product outside ${cfg.min_price:.0f}-${cfg.max_price:.0f}.
 
 TAGS (include in the META comment at the top):
 {", ".join(cfg.tag_prefix)} + keyword-specific tags (5-8 total)
