@@ -15,6 +15,7 @@ import sys
 import os
 import random
 from pathlib import Path
+from datetime import date as _date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -52,9 +53,54 @@ print(f"[EN] Fallback 풀: {len(FALLBACK_KEYWORDS)}개 키워드 "
       f"({len(_CATEGORY_CFG.fallback_keywords)} category + "
       f"{len(FALLBACK_KEYWORDS) - len(_CATEGORY_CFG.fallback_keywords)} txt 추가)")
 
-# ── 1단계: 트렌드 기반 후보 5개 선정 ──────────────────────────────────────────
+# ── 시즌 키워드 부스트 (계절별 우선 후보 2개 주입) ───────────────────────────
+_month = _date.today().month
+
+if _month in (4, 5, 6):       # 봄 → 여름 시즌 진입
+    _SEASONAL_BOOST = [
+        "best camping chair for summer",
+        "best portable fan for camping",
+        "best cooler for summer camping",
+        "best lightweight tent for summer",
+        "best bug repellent for camping",
+        "best hammock for summer camping",
+    ]
+elif _month in (7, 8):         # 한여름
+    _SEASONAL_BOOST = [
+        "best cooler for beach camping",
+        "best portable shade canopy camping",
+        "best camp shoes for summer hiking",
+        "best water shoes for camping",
+        "best solar shower for camping",
+        "best camping fan battery powered",
+    ]
+elif _month in (9, 10):        # 가을 → 방한 준비
+    _SEASONAL_BOOST = [
+        "best sleeping bag for fall camping",
+        "best base layer for fall hiking",
+        "best down jacket ultralight packable",
+        "best camp stove for cold weather",
+        "best wool hiking socks",
+        "best tent for windy conditions",
+    ]
+else:                           # 겨울 / 초봄 (11, 12, 1, 2, 3)
+    _SEASONAL_BOOST = [
+        "best 4 season tent for winter camping",
+        "best winter sleeping bag temperature rating",
+        "best hand warmers for camping",
+        "best insulated water bottle for camping",
+        "best snowshoes for beginners",
+        "best heated gloves for hiking",
+    ]
+
+print(f"[EN] 시즌 부스트({_month}월): {_SEASONAL_BOOST[:2]}")
+
+# ── 1단계: 트렌드 기반 후보 5개 선정 + 시즌 키워드 2개 주입 ────────────────
 candidates = pick_top_keywords(LANG, n=5)
-print(f"\n[EN] 후보 키워드: {candidates}")
+_seasonal_sample = random.sample(_SEASONAL_BOOST, min(2, len(_SEASONAL_BOOST)))
+candidates = _seasonal_sample + [kw for kw in candidates if kw not in _seasonal_sample]
+candidates = candidates[:7]   # 시즌 2 + 트렌드 5 = 최대 7개 분석
+print(f"\n[EN] 후보 키워드 ({len(candidates)}개, 시즌 우선): {candidates}")
 
 # ── 2단계: 각 후보 전체 분석 → 최고 gap_score 찾기 ──────────────────────────
 best_keyword  = None

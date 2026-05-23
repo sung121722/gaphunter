@@ -35,6 +35,21 @@ STEADY_MAX_PER_WEEK  = 14    # 안정기 주당 최대 (2x/day = 14)
 MIN_WORD_COUNT       = 800   # 최소 단어수
 MIN_H2_COUNT         = 2     # 최소 H2 헤딩 수
 MIN_PRODUCT_COUNT    = 3     # 최소 H3 제품 섹션 수
+MAX_FOMO_COUNT       = 1     # FOMO 최대 허용 수 (초과 시 HARD REJECT)
+
+# FOMO 감지 패턴
+FOMO_PATTERNS = [
+    r'🔥',
+    r'sells out fast',
+    r'limited stock',
+    r'order now',
+    r"don't wait",
+    r'going fast',
+    r'almost gone',
+    r'low stock',
+    r'act now',
+    r'while supplies last',
+]
 
 # 2차 금지어 확인 (프롬프트 금지어와 별개)
 RESIDUAL_BANNED = [
@@ -144,6 +159,43 @@ class PublishGovernor:
                 f"HTML 변환 필요: # -> <h2>, ## -> <h3>"
             )
 
+        # ── Gate 8: em dash / en dash in headings (HARD REJECT) ─
+        heading_texts = re.findall(
+            r'<h[123][^>]*>(.*?)</h[123]>', html_content,
+            re.IGNORECASE | re.DOTALL
+        )
+        dash_headings = [
+            re.sub(r'<[^>]+>', '', h).strip()
+            for h in heading_texts
+            if re.search(r'[—–]', h)
+        ]
+        if dash_headings:
+            reasons.append(
+                f"헤딩에 em dash/en dash 잔존 {len(dash_headings)}개 "
+                f"(post_process 미작동): {dash_headings[:2]}"
+            )
+
+        # ── Gate 9: FOMO 1개 초과 (HARD REJECT) ────────────
+        fomo_hits = 0
+        lower_content = html_content.lower()
+        for pat in FOMO_PATTERNS:
+            fomo_hits += len(re.findall(pat, lower_content, re.IGNORECASE))
+        if fomo_hits > MAX_FOMO_COUNT:
+            reasons.append(
+                f"FOMO 과다: {fomo_hits}개 감지 (최대 {MAX_FOMO_COUNT}개). "
+                f"2번째 이후 제품의 urgency 문구 제거 필요."
+            )
+
+        # ── Gate 10: 필수 라벨 확인 (Warning) ──────────────
+        has_best_overall = bool(re.search(
+            r'<h3[^>]*>[^<]*best overall[^<]*</h3>',
+            html_content, re.IGNORECASE
+        ))
+        has_best_for = bool(re.search(
+            r'<strong[^>]*>best for:</strong>',
+            html_content, re.IGNORECASE
+        ))
+
         # ── Warning: 금지어 잔존 ────────────────────────────
         lower = html_content.lower()
         found_banned = [w for w in RESIDUAL_BANNED if w in lower]
@@ -151,6 +203,12 @@ class PublishGovernor:
             warnings.append(
                 f"금지어 잔존 (발행은 가능하나 수정 권장): {found_banned}"
             )
+
+        # ── Warning: 필수 라벨 누락 ─────────────────────────
+        if not has_best_overall:
+            warnings.append("'Best Overall:' H3 라벨 누락 — 시스템 프롬프트 확인")
+        if not has_best_for:
+            warnings.append("'Best for:' 문구 누락 — 제품별 추천 대상 문장 없음")
 
         # ── Warning: 제목에 "Best Best" ─────────────────────
         if re.search(r'\bbest best\b', title, re.IGNORECASE):
@@ -165,6 +223,8 @@ class PublishGovernor:
             has_schema='"@type": "FAQPage"' in html_content,
             has_table='<table' in html_content.lower(),
             banned_count=len(found_banned),
+            has_best_overall=has_best_overall,
+            has_best_for=has_best_for,
         )
 
         approved = len(reasons) == 0
@@ -260,20 +320,26 @@ class PublishGovernor:
         has_schema: bool,
         has_table: bool,
         banned_count: int,
+        has_best_overall: bool = False,
+        has_best_for: bool = False,
     ) -> float:
         score = 0.0
 
-        # 단어수 (최대 30점)
-        score += min(30.0, (word_count / MIN_WORD_COUNT) * 30.0)
+        # 단어수 (최대 25점)
+        score += min(25.0, (word_count / MIN_WORD_COUNT) * 25.0)
 
-        # 구조 (최대 30점)
-        score += min(15.0, h2_count * 5.0)
-        score += min(15.0, h3_count * 5.0)
+        # 구조 (최대 25점)
+        score += min(12.0, h2_count * 4.0)
+        score += min(13.0, h3_count * 4.0)
 
         # 부가 요소 (최대 30점)
         if has_faq:    score += 10.0
         if has_schema: score += 10.0
         if has_table:  score += 10.0
+
+        # 라벨 품질 보너스 (최대 10점)
+        if has_best_overall: score += 5.0
+        if has_best_for:     score += 5.0
 
         # 금지어 패널티 (최대 -10점)
         score -= min(10.0, banned_count * 2.0)
