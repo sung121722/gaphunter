@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import config
 from category_config import get_config as _get_category_config
-from core.keyword_scheduler import pick_top_keywords, log_keyword
+from core.keyword_scheduler import pick_top_keywords, log_keyword, get_related_posts
 from core.collector  import collect
 from core.predictor  import run_predictions
 from core.scorer     import score_gap
@@ -185,6 +185,40 @@ content = post_result["content"]
 
 # ── 제목: Claude가 생성한 H1 추출 → 없으면 키워드 기반 폴백 ──────────────────
 import re as _re
+
+# ── 내부 링크 "Related Gear Guides" 섹션 주입 ───────────────────────────────
+def _inject_related_posts(html: str, keyword: str) -> str:
+    """발행된 관련 포스트를 Bottom Line 앞에 삽입합니다."""
+    related = get_related_posts(keyword, language=LANG, n=3)
+    if not related:
+        return html   # 관련 포스트 없으면 그대로
+
+    items_html = "\n".join(
+        f'  <li><a href="{r["url"]}">{r["title"]}</a></li>'
+        for r in related
+    )
+    section = (
+        '\n<h2>Related Gear Guides</h2>\n'
+        '<ul>\n'
+        f'{items_html}\n'
+        '</ul>\n'
+    )
+
+    # Bottom Line H2 바로 앞에 삽입 (없으면 맨 끝에 추가)
+    bottom_line = _re.search(r'<h2[^>]*>[^<]*bottom line[^<]*</h2>',
+                             html, _re.IGNORECASE)
+    if bottom_line:
+        pos = bottom_line.start()
+        html = html[:pos] + section + html[pos:]
+        print(f"[EN] 내부링크 {len(related)}개 주입 (Bottom Line 앞)")
+    else:
+        html = html + section
+        print(f"[EN] 내부링크 {len(related)}개 주입 (맨 끝)")
+
+    return html
+
+content = _inject_related_posts(content, best_keyword)
+
 _h1_match = _re.search(r'<h1[^>]*>(.*?)</h1>', content, _re.IGNORECASE | _re.DOTALL)
 if _h1_match:
     # HTML 태그 제거 후 사용
@@ -238,7 +272,14 @@ else:
             category=_CATEGORY_CFG.slug,
         )
 
-log_keyword(best_keyword, LANG, post_result["file_path"], products, status)
+log_keyword(
+    best_keyword, LANG,
+    post_result["file_path"],
+    products,
+    status,
+    post_url=post_url,
+    title=title,
+)
 
 output_file = os.environ.get("GITHUB_OUTPUT", os.path.join(os.environ.get("TEMP", "/tmp"), "gh_output.txt"))
 with open(output_file, "a") as f:

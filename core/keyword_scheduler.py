@@ -198,10 +198,21 @@ def pick_keyword(language: str) -> str:
     return pick_top_keywords(language, n=1)[0]
 
 
-def log_keyword(keyword: str, language: str, file_path: str,
-                products: list[str], status: str = "generated") -> None:
+def log_keyword(
+    keyword: str,
+    language: str,
+    file_path: str,
+    products: list[str],
+    status: str = "generated",
+    post_url: str = "",
+    title: str = "",
+) -> None:
     """
     발행/생성 결과를 publish_log.json에 기록.
+
+    Args:
+        post_url: Blogger 발행 URL (published 상태일 때만 의미 있음)
+        title:    실제 H1 제목 (keyword와 다를 수 있음)
     """
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     logs = []
@@ -215,13 +226,84 @@ def log_keyword(keyword: str, language: str, file_path: str,
     logs.append({
         "date":      str(datetime.date.today()),
         "keyword":   keyword,
+        "title":     title or keyword,
         "platform":  platform,
         "status":    status,
+        "post_url":  post_url,
         "file_path": file_path,
         "products":  products,
-        "title":     keyword,
     })
     LOG_PATH.write_text(json.dumps(logs, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# ── 내부 링크용 유틸 ─────────────────────────────────────────────────────────
+
+_STOP_WORDS = {
+    "best", "for", "the", "a", "an", "and", "or", "of", "in", "to",
+    "with", "under", "over", "on", "at", "by", "from", "vs", "top",
+}
+
+
+def get_related_posts(
+    current_keyword: str,
+    language: str = "en",
+    n: int = 3,
+) -> list[dict]:
+    """
+    현재 키워드와 관련된 기발행 포스트를 반환합니다.
+    키워드 단어 overlap 점수 기반 상위 N개.
+
+    Returns:
+        [{"title": str, "url": str, "keyword": str}, ...]
+        published 상태 + post_url 있는 항목만 포함.
+    """
+    if not LOG_PATH.exists():
+        return []
+
+    try:
+        logs = json.loads(LOG_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+    platform = "tistory" if language == "ko" else "blogger"
+    kw_tokens = {
+        w.lower() for w in current_keyword.split()
+        if w.lower() not in _STOP_WORDS
+    }
+
+    scored = []
+    for entry in logs:
+        if entry.get("platform") != platform:
+            continue
+        if entry.get("status") != "published":
+            continue
+        url = entry.get("post_url", "").strip()
+        if not url:
+            continue
+        entry_kw = entry.get("keyword", "")
+        if entry_kw.lower() == current_keyword.lower():
+            continue   # 자기 자신 제외
+
+        entry_tokens = {
+            w.lower() for w in entry_kw.split()
+            if w.lower() not in _STOP_WORDS
+        }
+        overlap = len(kw_tokens & entry_tokens)
+
+        # camping 카테고리는 같은 카테고리 내 모든 포스트가 관련성 있음
+        # → overlap 0이어도 최소 점수 부여
+        score = overlap + 0.1
+
+        scored.append({
+            "score":   score,
+            "title":   entry.get("title") or entry_kw,
+            "url":     url,
+            "keyword": entry_kw,
+        })
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return [{"title": r["title"], "url": r["url"], "keyword": r["keyword"]}
+            for r in scored[:n]]
 
 
 if __name__ == "__main__":
