@@ -1484,5 +1484,27 @@
       "best portable fan for camping Product B (dummy)",
       "best portable fan for camping Product C (dummy)"
     ]
+  },
+  {
+    "date": "2026-05-27",
+    "platform": "blogger",
+    "status": "published",
+    "title": "Best Hammock for Summer Camping: What I'd Actually Hang This Season",
+    "post_url": "https://stuffnod.blogspot.com/2026/05/best-hammock-for-summer-camping-what-id.html",
+    "published_at": "2026-05-27T16:49:29.909380+00:00"
+  },
+  {
+    "date": "2026-05-27",
+    "keyword": "best hammock for summer camping",
+    "title": "Best Hammock for Summer Camping: What I'd Actually Hang This Season",
+    "platform": "blogger",
+    "status": "published",
+    "post_url": "https://stuffnod.blogspot.com/2026/05/best-hammock-for-summer-camping-what-id.html",
+    "file_path": "/home/runner/work/gaphunter/gaphunter/posts/best-hammock-for-summer-camping_en_2026-05-27.html",
+    "products": [
+      "Product A",
+      "Product B",
+      "Product C"
+    ]
   }
 ]
