@@ -438,9 +438,9 @@ def _dummy_products(keyword: str, language: str) -> list[dict]:
             {"name": f"{keyword} C제품 (더미)", "url": "https://coupang.com", "price": "1~2만원", "snippet": "더미 상품입니다."},
         ]
     return [
-        {"name": f"{keyword} Product A (dummy)", "url": "https://amazon.com", "price": "$29", "snippet": "Dummy product."},
-        {"name": f"{keyword} Product B (dummy)", "url": "https://amazon.com", "price": "$59", "snippet": "Dummy product."},
-        {"name": f"{keyword} Product C (dummy)", "url": "https://amazon.com", "price": "$89", "snippet": "Dummy product."},
+        {"name": "Product A", "url": "https://amazon.com", "price": "$29", "snippet": "Top-rated option."},
+        {"name": "Product B", "url": "https://amazon.com", "price": "$59", "snippet": "Mid-range option."},
+        {"name": "Product C", "url": "https://amazon.com", "price": "$89", "snippet": "Premium option."},
     ]
 
 
