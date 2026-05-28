@@ -1,7 +1,7 @@
 """
 publish_governor.py
 ────────────────────
-발행 전 품질 + 빈도 게이트.
+AdSense 승인 기준에 맞는 발행 전 품질 + 빈도 게이트.
 run_en.py의 publish() 호출 전에 governor.approve() 통과 여부를 확인하세요.
 
     from core.publish_governor import PublishGovernor
@@ -25,17 +25,20 @@ logger = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════
-# 설정값 — GapHunter 스케줄 기준
+# 설정값 — AdSense 승인 기준
 # ══════════════════════════════════════════════════════════════
 
-MIN_INTERVAL_HOURS   = 10    # 발행 간격 최소 시간 (12h 스케줄 기준 2h 여유)
-RAMP_DAYS            = 90    # 초기 램프업 기간 (일)
-RAMP_MAX_PER_WEEK    = 14    # 램프업 중 주당 최대 (2x/day = 14)
-STEADY_MAX_PER_WEEK  = 14    # 안정기 주당 최대 (2x/day = 14)
-MIN_WORD_COUNT       = 800   # 최소 단어수
-MIN_H2_COUNT         = 2     # 최소 H2 헤딩 수
-MIN_PRODUCT_COUNT    = 3     # 최소 H3 제품 섹션 수
-MAX_FOMO_COUNT       = 1     # FOMO 최대 허용 수 (초과 시 HARD REJECT)
+MIN_INTERVAL_HOURS   = 10     # 발행 간격 최소 시간
+RAMP_DAYS            = 90     # 초기 램프업 기간 (일)
+RAMP_MAX_PER_WEEK    = 14     # 램프업 중 주당 최대
+STEADY_MAX_PER_WEEK  = 14     # 안정기 주당 최대
+
+# AdSense 품질 기준 (구글 기준: 1000+ 단어, 실질적 내용)
+MIN_WORD_COUNT       = 1500   # 최소 단어수 (AdSense 권장 1000+ → 안전마진 1500)
+MIN_H2_COUNT         = 4      # 최소 H2 섹션 수 (구조 다양성 증명)
+MIN_PRODUCT_COUNT    = 3      # 최소 H3 제품 섹션 수
+MIN_FAQ_ANSWER_WORDS = 40     # FAQ 답변 최소 단어수
+MAX_FOMO_COUNT       = 1      # FOMO 최대 허용 수 (초과 시 HARD REJECT)
 
 # FOMO 감지 패턴
 FOMO_PATTERNS = [
@@ -49,15 +52,31 @@ FOMO_PATTERNS = [
     r'low stock',
     r'act now',
     r'while supplies last',
+    r'hurry',
+    r'only \d+ left',
 ]
 
-# 2차 금지어 확인 (프롬프트 금지어와 별개)
+# 금지어 (AdSense는 AI 생성 느낌 나는 표현을 저품질로 판단)
 RESIDUAL_BANNED = [
     "comprehensive", "delve", "seamlessly", "leverage", "utilize",
     "game-changer", "in conclusion", "it's worth noting",
     "let's cut right to it", "here's the thing",
     "(ai tested)", "[ai tested]",
+    "cutting-edge", "state-of-the-art", "revolutionary",
+    "transformative", "groundbreaking", "meticulous",
+    "unparalleled", "exceptional", "remarkable",
 ]
+
+# AdSense 필수 요소
+REQUIRED_ELEMENTS = {
+    "affiliate_disclosure": r'class=["\']disclosure["\']',
+    "last_updated":         r'last updated',
+    "faq_schema":           r'"@type"\s*:\s*"FAQPage"',
+    "comparison_table":     r'<table',
+    "amazon_cta":           r'amazon\.com',
+    "best_overall_h3":      r'<h3[^>]*>\s*best overall\s*:',
+    "best_for":             r'<strong[^>]*>best for\s*:</strong>',
+}
 
 
 # ══════════════════════════════════════════════════════════════
@@ -69,14 +88,15 @@ class ApprovalResult:
     approved: bool
     rejection_reasons: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
-    quality_score: float = 0.0   # 0~100
+    quality_score: float = 0.0
     word_count: int = 0
+    adsense_ready: bool = False   # AdSense 제출 준비 완료 여부
 
 
 @dataclass
 class PublishRecord:
     title: str
-    published_at: str     # ISO 8601
+    published_at: str
     word_count: int
     quality_score: float
 
@@ -86,7 +106,7 @@ class PublishRecord:
 # ══════════════════════════════════════════════════════════════
 
 class PublishGovernor:
-    """발행 전 승인 게이트."""
+    """AdSense 품질 기준 발행 승인 게이트."""
 
     def __init__(self, log_path: str = "wiki/publish_governor_log.json"):
         self.log_path = Path(log_path)
@@ -95,14 +115,9 @@ class PublishGovernor:
     # ── 공개 인터페이스 ───────────────────────────────────────
 
     def approve(self, html_content: str, title: str) -> ApprovalResult:
-        """
-        발행 승인 여부를 판단합니다.
-
-        Returns:
-            ApprovalResult.approved == True여야 발행 가능
-        """
         reasons  = []
         warnings = []
+        lower    = html_content.lower()
 
         # ── Gate 1: 발행 간격 ──────────────────────────────
         interval_ok, interval_msg = self._check_interval()
@@ -114,52 +129,55 @@ class PublishGovernor:
         if not weekly_ok:
             reasons.append(weekly_msg)
 
-        # ── Gate 3: 단어수 ──────────────────────────────────
+        # ── Gate 3: 단어수 (AdSense 핵심 기준) ─────────────
         word_count = self._count_words(html_content)
         if word_count < MIN_WORD_COUNT:
+            shortage = MIN_WORD_COUNT - word_count
             reasons.append(
-                f"단어수 부족: {word_count}단어 (최소 {MIN_WORD_COUNT}). "
-                f"약 {MIN_WORD_COUNT - word_count}단어 추가 필요."
+                f"[ADSENSE] 단어수 부족: {word_count}단어 (최소 {MIN_WORD_COUNT}). "
+                f"{shortage}단어 추가 필요. AdSense는 얇은 콘텐츠를 거부합니다."
             )
 
-        # ── Gate 4: 구조 체크 ───────────────────────────────
+        # ── Gate 4: H2 구조 ─────────────────────────────────
         h2_count = len(re.findall(r'<h2[^>]*>', html_content, re.IGNORECASE))
         if h2_count < MIN_H2_COUNT:
             reasons.append(
-                f"H2 헤딩 부족: {h2_count}개 (최소 {MIN_H2_COUNT}). "
-                f"섹션 구분 필요."
+                f"[구조] H2 헤딩 부족: {h2_count}개 (최소 {MIN_H2_COUNT}). "
+                f"섹션 구분 추가 필요."
             )
 
+        # ── Gate 5: H3 제품 섹션 ────────────────────────────
         h3_count = len(re.findall(r'<h3[^>]*>', html_content, re.IGNORECASE))
         if h3_count < MIN_PRODUCT_COUNT:
             reasons.append(
-                f"H3 제품 섹션 부족: {h3_count}개 (최소 {MIN_PRODUCT_COUNT}). "
-                f"제품 리뷰 수 확인 필요."
+                f"[구조] H3 제품 섹션 부족: {h3_count}개 (최소 {MIN_PRODUCT_COUNT})."
             )
 
-        # ── Gate 5: 미교체 링크 플레이스홀더 ───────────────
+        # ── Gate 6: 미교체 링크 플레이스홀더 ───────────────
         unresolved = re.findall(r'\[(?:AMAZON_LINK|UNRESOLVED_LINK):[^\]]+\]', html_content)
         if unresolved:
             reasons.append(
-                f"미교체 어필리에이트 링크 {len(unresolved)}개: "
+                f"[링크] 미교체 어필리에이트 링크 {len(unresolved)}개: "
                 f"{unresolved[:3]}{'...' if len(unresolved) > 3 else ''}"
             )
 
-        # ── Gate 6: 이미지 플레이스홀더 ────────────────────
-        img_placeholders = re.findall(r'\[(?:IMAGE|PLACEHOLDER|INSERT)[^\]]*\]',
-                                       html_content, re.IGNORECASE)
+        # ── Gate 7: 이미지/콘텐츠 플레이스홀더 ────────────
+        img_placeholders = re.findall(
+            r'\[(?:IMAGE|PLACEHOLDER|INSERT|TODO)[^\]]*\]',
+            html_content, re.IGNORECASE
+        )
         if img_placeholders:
-            reasons.append(f"이미지 플레이스홀더 미처리: {img_placeholders}")
+            reasons.append(f"[품질] 플레이스홀더 미처리: {img_placeholders}")
 
-        # ── Gate 7: 마크다운 잔존 체크 ─────────────────────
+        # ── Gate 8: 마크다운 잔존 ──────────────────────────
         markdown_headers = re.findall(r'^#{1,3} ', html_content, re.MULTILINE)
         if markdown_headers:
             reasons.append(
-                f"마크다운 헤더 잔존 {len(markdown_headers)}개. "
-                f"HTML 변환 필요: # -> <h2>, ## -> <h3>"
+                f"[형식] 마크다운 헤더 잔존 {len(markdown_headers)}개. "
+                f"# → <h2>, ## → <h3> 변환 필요."
             )
 
-        # ── Gate 8: em dash / en dash in headings (HARD REJECT) ─
+        # ── Gate 9: em dash / en dash in headings ───────────
         heading_texts = re.findall(
             r'<h[123][^>]*>(.*?)</h[123]>', html_content,
             re.IGNORECASE | re.DOTALL
@@ -171,60 +189,130 @@ class PublishGovernor:
         ]
         if dash_headings:
             reasons.append(
-                f"헤딩에 em dash/en dash 잔존 {len(dash_headings)}개 "
-                f"(post_process 미작동): {dash_headings[:2]}"
+                f"[형식] 헤딩에 em/en dash 잔존 {len(dash_headings)}개: "
+                f"{dash_headings[:2]}"
             )
 
-        # ── Gate 9: FOMO 1개 초과 (HARD REJECT) ────────────
+        # ── Gate 10: FOMO 초과 (HARD REJECT) ────────────────
         fomo_hits = 0
-        lower_content = html_content.lower()
         for pat in FOMO_PATTERNS:
-            fomo_hits += len(re.findall(pat, lower_content, re.IGNORECASE))
+            fomo_hits += len(re.findall(pat, lower, re.IGNORECASE))
         if fomo_hits > MAX_FOMO_COUNT:
             reasons.append(
-                f"FOMO 과다: {fomo_hits}개 감지 (최대 {MAX_FOMO_COUNT}개). "
+                f"[FOMO] 과다: {fomo_hits}개 감지 (최대 {MAX_FOMO_COUNT}개). "
                 f"2번째 이후 제품의 urgency 문구 제거 필요."
             )
 
-        # ── Gate 10: 필수 라벨 확인 (Warning) ──────────────
-        has_best_overall = bool(re.search(
-            r'<h3[^>]*>[^<]*best overall[^<]*</h3>',
-            html_content, re.IGNORECASE
+        # ── Gate 11: 어필리에이트 공시 확인 (AdSense 필수) ─
+        has_disclosure = bool(re.search(
+            REQUIRED_ELEMENTS["affiliate_disclosure"], html_content, re.IGNORECASE
         ))
-        has_best_for = bool(re.search(
-            r'<strong[^>]*>best for:</strong>',
-            html_content, re.IGNORECASE
+        if not has_disclosure:
+            reasons.append(
+                "[ADSENSE] 어필리에이트 공시(disclosure) 누락. "
+                "H1 앞에 <p class=\"disclosure\"> 반드시 필요. "
+                "FTC 규정 + AdSense 정책 위반."
+            )
+
+        # ── Gate 12: FAQ 스키마 확인 (AdSense 리치스니펫) ──
+        has_faq_schema = bool(re.search(
+            REQUIRED_ELEMENTS["faq_schema"], html_content, re.IGNORECASE
         ))
+        if not has_faq_schema:
+            reasons.append(
+                "[구조] FAQPage JSON-LD 스키마 누락. "
+                "구조화 데이터 없으면 리치스니펫 불가."
+            )
+
+        # ── Gate 13: Last updated 날짜 ──────────────────────
+        has_last_updated = bool(re.search(
+            REQUIRED_ELEMENTS["last_updated"], html_content, re.IGNORECASE
+        ))
+        if not has_last_updated:
+            warnings.append(
+                "[권장] 'Last updated' 날짜 누락. "
+                "구글은 최신성을 신뢰 신호로 봅니다."
+            )
+
+        # ── Gate 14: dummy 상품 감지 ────────────────────────
+        dummy_signals = [
+            "product a", "product b", "product c",
+            '"product a"', '"product b"', '"product c"',
+            ">$29<", ">$59<", ">$89<",
+        ]
+        found_dummy = [d for d in dummy_signals if d in lower]
+        if found_dummy:
+            reasons.append(
+                f"[품질] dummy 상품 감지: {found_dummy}. "
+                f"실제 Amazon 상품으로 교체 필수. "
+                f"GOOGLE_SEARCH_CX 환경변수 및 DRY_RUN_MODE 확인."
+            )
+
+        # ── Gate 15: FAQ 답변 품질 ──────────────────────────
+        faq_answers = re.findall(
+            r'<h3[^>]*>[^<]*\?[^<]*</h3>\s*<p>(.*?)</p>',
+            html_content, re.IGNORECASE | re.DOTALL
+        )
+        thin_faqs = []
+        for ans in faq_answers:
+            clean = re.sub(r'<[^>]+>', '', ans).strip()
+            word_c = len(clean.split())
+            if word_c < MIN_FAQ_ANSWER_WORDS:
+                thin_faqs.append(word_c)
+        if thin_faqs:
+            warnings.append(
+                f"[품질] FAQ 답변이 너무 짧음: {thin_faqs} 단어. "
+                f"최소 {MIN_FAQ_ANSWER_WORDS}단어 권장. "
+                f"얇은 FAQ는 AdSense 품질 심사에서 감점."
+            )
 
         # ── Warning: 금지어 잔존 ────────────────────────────
-        lower = html_content.lower()
         found_banned = [w for w in RESIDUAL_BANNED if w in lower]
         if found_banned:
             warnings.append(
-                f"금지어 잔존 (발행은 가능하나 수정 권장): {found_banned}"
+                f"[언어] AI 냄새 나는 금지어 잔존: {found_banned}. "
+                f"발행은 가능하나 수정 강권. AdSense는 AI 생성 느낌을 감지합니다."
             )
 
-        # ── Warning: 필수 라벨 누락 ─────────────────────────
+        # ── Warning: 필수 라벨 ──────────────────────────────
+        has_best_overall = bool(re.search(
+            REQUIRED_ELEMENTS["best_overall_h3"], html_content, re.IGNORECASE
+        ))
+        has_best_for = bool(re.search(
+            REQUIRED_ELEMENTS["best_for"], html_content, re.IGNORECASE
+        ))
         if not has_best_overall:
-            warnings.append("'Best Overall:' H3 라벨 누락 — 시스템 프롬프트 확인")
+            warnings.append("[구조] 'Best Overall:' H3 라벨 누락.")
         if not has_best_for:
-            warnings.append("'Best for:' 문구 누락 — 제품별 추천 대상 문장 없음")
+            warnings.append("[구조] 'Best for:' 문구 누락.")
 
-        # ── Warning: 제목에 "Best Best" ─────────────────────
+        # ── Warning: 타이틀 중복 ────────────────────────────
         if re.search(r'\bbest best\b', title, re.IGNORECASE):
-            warnings.append(f"타이틀에 'Best Best' 중복: '{title}'")
+            warnings.append(f"[타이틀] 'Best Best' 중복: '{title}'")
+
+        # ── AdSense 준비 판정 ───────────────────────────────
+        hard_blocks = [r for r in reasons if "[ADSENSE]" in r or "[품질]" in r]
+        adsense_ready = (
+            len(reasons) == 0
+            and word_count >= MIN_WORD_COUNT
+            and has_disclosure
+            and has_faq_schema
+            and not found_dummy
+        )
 
         # ── 품질 점수 ───────────────────────────────────────
         quality_score = self._calc_quality(
             word_count=word_count,
             h2_count=h2_count,
             h3_count=h3_count,
-            has_faq="faq" in html_content.lower(),
-            has_schema='"@type": "FAQPage"' in html_content,
-            has_table='<table' in html_content.lower(),
+            has_faq="faq" in lower,
+            has_schema=has_faq_schema,
+            has_table='<table' in lower,
             banned_count=len(found_banned),
             has_best_overall=has_best_overall,
             has_best_for=has_best_for,
+            has_disclosure=has_disclosure,
+            has_last_updated=has_last_updated,
         )
 
         approved = len(reasons) == 0
@@ -232,7 +320,8 @@ class PublishGovernor:
         if approved:
             logger.info(
                 f"[GOVERNOR] APPROVED: '{title}' | "
-                f"quality={quality_score:.0f} | {word_count}단어"
+                f"quality={quality_score:.0f} | {word_count}단어 | "
+                f"AdSense={'✅' if adsense_ready else '⚠️'}"
             )
         else:
             logger.error(f"[GOVERNOR] BLOCKED: '{title}' | 사유 {len(reasons)}개")
@@ -248,10 +337,10 @@ class PublishGovernor:
             warnings=warnings,
             quality_score=quality_score,
             word_count=word_count,
+            adsense_ready=adsense_ready,
         )
 
     def record_publish(self, title: str, html_content: str, quality_score: float) -> None:
-        """발행 성공 후 호출. 로그에 기록합니다."""
         record = PublishRecord(
             title=title,
             published_at=datetime.now(timezone.utc).isoformat(),
@@ -274,20 +363,17 @@ class PublishGovernor:
             wait = MIN_INTERVAL_HOURS - elapsed
             return False, (
                 f"발행 간격 부족: 마지막 발행 {elapsed:.1f}시간 전. "
-                f"{wait:.1f}시간 후 재시도. (최소 {MIN_INTERVAL_HOURS}시간)"
+                f"{wait:.1f}시간 후 재시도."
             )
         return True, ""
 
     def _check_weekly_limit(self):
         now = datetime.now(timezone.utc)
         week_ago = now - timedelta(days=7)
-
         recent_week = [
             r for r in self._records
             if datetime.fromisoformat(r.published_at) > week_ago
         ]
-
-        # 블로그 나이 계산
         if self._records:
             first_dt = datetime.fromisoformat(self._records[0].published_at)
             blog_age_days = (now - first_dt).days
@@ -295,21 +381,18 @@ class PublishGovernor:
             blog_age_days = 0
 
         if blog_age_days < RAMP_DAYS:
-            limit = RAMP_MAX_PER_WEEK
-            phase = f"램프업({blog_age_days}일차)"
+            limit, phase = RAMP_MAX_PER_WEEK, f"램프업({blog_age_days}일차)"
         else:
-            limit = STEADY_MAX_PER_WEEK
-            phase = "안정기"
+            limit, phase = STEADY_MAX_PER_WEEK, "안정기"
 
         if len(recent_week) >= limit:
             return False, (
                 f"주간 발행 한도 초과: 최근 7일 {len(recent_week)}개 / "
-                f"한도 {limit}개 ({phase}). "
-                f"내일 이후 재시도."
+                f"한도 {limit}개 ({phase})."
             )
         return True, ""
 
-    # ── 품질 점수 계산 ───────────────────────────────────────
+    # ── 품질 점수 계산 (AdSense 가중치 반영) ────────────────
 
     def _calc_quality(
         self,
@@ -322,26 +405,32 @@ class PublishGovernor:
         banned_count: int,
         has_best_overall: bool = False,
         has_best_for: bool = False,
+        has_disclosure: bool = False,
+        has_last_updated: bool = False,
     ) -> float:
         score = 0.0
 
-        # 단어수 (최대 25점)
-        score += min(25.0, (word_count / MIN_WORD_COUNT) * 25.0)
+        # 단어수 (최대 30점 — AdSense 핵심)
+        score += min(30.0, (word_count / MIN_WORD_COUNT) * 30.0)
 
-        # 구조 (최대 25점)
-        score += min(12.0, h2_count * 4.0)
-        score += min(13.0, h3_count * 4.0)
+        # 구조 (최대 20점)
+        score += min(10.0, h2_count * 2.5)
+        score += min(10.0, h3_count * 3.0)
 
-        # 부가 요소 (최대 30점)
-        if has_faq:    score += 10.0
-        if has_schema: score += 10.0
-        if has_table:  score += 10.0
+        # AdSense 필수 요소 (최대 30점)
+        if has_faq:          score += 8.0
+        if has_schema:       score += 10.0
+        if has_table:        score += 7.0
+        if has_disclosure:   score += 5.0   # FTC + AdSense 필수
 
-        # 라벨 품질 보너스 (최대 10점)
+        # 라벨 품질 (최대 10점)
         if has_best_overall: score += 5.0
         if has_best_for:     score += 5.0
 
-        # 금지어 패널티 (최대 -10점)
+        # 신뢰 신호 보너스
+        if has_last_updated: score += 2.0
+
+        # 금지어 패널티
         score -= min(10.0, banned_count * 2.0)
 
         return round(max(0.0, min(100.0, score)), 1)
@@ -354,16 +443,15 @@ class PublishGovernor:
         try:
             with open(self.log_path, encoding="utf-8") as f:
                 data = json.load(f)
-            records = []
-            for item in data:
-                if "published_at" in item:
-                    records.append(PublishRecord(
-                        title=item.get("title", ""),
-                        published_at=item["published_at"],
-                        word_count=item.get("word_count", 0),
-                        quality_score=item.get("quality_score", 0.0),
-                    ))
-            return records
+            return [
+                PublishRecord(
+                    title=item.get("title", ""),
+                    published_at=item["published_at"],
+                    word_count=item.get("word_count", 0),
+                    quality_score=item.get("quality_score", 0.0),
+                )
+                for item in data if "published_at" in item
+            ]
         except (json.JSONDecodeError, KeyError) as e:
             logger.warning(f"[GOVERNOR] 로그 파싱 실패: {e}. 빈 로그로 시작.")
             return []
@@ -384,7 +472,6 @@ class PublishGovernor:
 
     @staticmethod
     def _count_words(html: str) -> int:
-        """HTML 태그 제거 후 단어 수 계산"""
         text = re.sub(r'<[^>]+>', ' ', html)
         text = re.sub(r'\s+', ' ', text).strip()
         return len(text.split())
