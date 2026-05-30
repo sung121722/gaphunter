@@ -177,7 +177,7 @@ class PublishGovernor:
                 f"# → <h2>, ## → <h3> 변환 필요."
             )
 
-        # ── Gate 9: em dash / en dash in headings ───────────
+        # ── Gate 9: em dash / en dash (헤딩 + 본문 전체) ────
         heading_texts = re.findall(
             r'<h[123][^>]*>(.*?)</h[123]>', html_content,
             re.IGNORECASE | re.DOTALL
@@ -191,6 +191,17 @@ class PublishGovernor:
             reasons.append(
                 f"[형식] 헤딩에 em/en dash 잔존 {len(dash_headings)}개: "
                 f"{dash_headings[:2]}"
+            )
+
+        # 본문 전체 em/en dash 카운트 (5개 초과 시 HARD REJECT)
+        body_text = re.sub(r'<script[^>]*>.*?</script>', '', html_content,
+                           flags=re.IGNORECASE | re.DOTALL)
+        body_dash_count = len(re.findall(r'[—–]', body_text))
+        if body_dash_count > 5:
+            reasons.append(
+                f"[형식] 본문 em/en dash {body_dash_count}개. "
+                f"모두 콜론(:) 또는 마침표로 교체 필요. "
+                f"프롬프트 금지어 적용 확인."
             )
 
         # ── Gate 10: FOMO 초과 (HARD REJECT) ────────────────
