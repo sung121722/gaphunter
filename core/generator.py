@@ -244,11 +244,11 @@ def _crawl_product_details(url: str, language: str) -> dict:
         result = {}
 
         if language == "en" and "amazon.com" in url:
-            # Amazon 제품 페이지 파싱
+            # 제품명
             t = soup.find("span", {"id": "productTitle"})
             result["name"] = t.get_text(strip=True)[:120] if t else ""
 
-            # 가격 (여러 selector 시도)
+            # 가격
             for sel in ["span.a-price-whole", "#priceblock_ourprice",
                         "#priceblock_dealprice", "span.a-offscreen"]:
                 p = soup.select_one(sel)
@@ -268,6 +268,41 @@ def _crawl_product_details(url: str, language: str) -> dict:
             # 리뷰 수
             rc = soup.select_one("#acrCustomerReviewText")
             result["review_count"] = rc.get_text(strip=True)[:30] if rc else ""
+
+            # ── 스펙 테이블 파싱 (핵심 추가) ──────────────────
+            # Technical Details 테이블 또는 Product Details 테이블
+            specs = {}
+            spec_targets = {
+                "brand":      ["Brand", "Manufacturer"],
+                "material":   ["Material", "Fabric type", "Outer Material"],
+                "dimensions": ["Product Dimensions", "Item Dimensions", "Dimensions"],
+                "weight":     ["Item Weight", "Weight"],
+                "capacity":   ["Maximum Weight Recommendation", "Weight Capacity",
+                               "Weight Limit", "Load Capacity"],
+                "asin":       ["ASIN"],
+            }
+
+            # selector 1: 상세정보 테이블 (#productDetails_techSpec_section_1)
+            for table in soup.select(
+                "#productDetails_techSpec_section_1, "
+                "#productDetails_detailBullets_sections1, "
+                "#detailBullets_feature_div"
+            ):
+                for row in table.select("tr, li"):
+                    th = row.select_one("th, span.a-text-bold")
+                    td = row.select_one("td, span:not(.a-text-bold)")
+                    if not th or not td:
+                        continue
+                    key_text = th.get_text(strip=True).rstrip(":")
+                    val_text = td.get_text(strip=True)[:100]
+                    for spec_key, labels in spec_targets.items():
+                        if any(lbl.lower() in key_text.lower() for lbl in labels):
+                            specs[spec_key] = val_text
+                            break
+
+            if specs:
+                result["specs"] = specs
+                logger.debug("[CRAWL] 스펙 추출: %s", specs)
 
         elif language == "ko" and "coupang.com" in url:
             # 쿠팡 제품 페이지 파싱

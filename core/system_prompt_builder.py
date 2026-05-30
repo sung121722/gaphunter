@@ -104,12 +104,27 @@ def build_user_prompt(
         rating   = p.get("rating") or "N/A"
         reviews  = p.get("review_count") or p.get("reviews") or "N/A"
         snippet  = p.get("snippet") or ""
-        asin     = p.get("asin") or ""
-        asin_str = f" | ASIN: {asin}" if asin else ""
-        products_str_lines.append(
-            f"Product {i}: {name} | Price: {price} | Rating: {rating} ({reviews} reviews)"
-            + (f"{asin_str}") + (f" | {snippet[:120]}" if snippet else "")
-        )
+        url      = p.get("url") or ""
+        specs    = p.get("specs") or {}
+
+        line = f"Product {i}: {name} | Price: {price} | Rating: {rating} ({reviews} reviews)"
+        if url:
+            line += f" | URL: {url}"
+        if snippet:
+            line += f" | Description: {snippet[:120]}"
+
+        # 실제 스펙이 있으면 반드시 포함 — Claude가 이 값을 그대로 써야 함
+        if specs:
+            spec_parts = []
+            if specs.get("brand"):       spec_parts.append(f"Brand: {specs['brand']}")
+            if specs.get("material"):    spec_parts.append(f"Material: {specs['material']}")
+            if specs.get("dimensions"):  spec_parts.append(f"Dimensions: {specs['dimensions']}")
+            if specs.get("capacity"):    spec_parts.append(f"Weight Capacity: {specs['capacity']}")
+            if specs.get("weight"):      spec_parts.append(f"Item Weight: {specs['weight']}")
+            if spec_parts:
+                line += f"\n  VERIFIED SPECS: {' | '.join(spec_parts)}"
+
+        products_str_lines.append(line)
     products_str = "\n".join(products_str_lines) if products_str_lines else "(no product data)"
     supporting_str = ", ".join(supporting_keywords) if supporting_keywords else "(none)"
 
@@ -129,7 +144,9 @@ ASSIGN AWARDS:
 
 WRITE EACH REVIEW:
 - Verdict in sentence 1. Real scenario in sentence 2-3. ("I used this on a 4-day trip in 45°F rain...")
-- Specs paragraph: exact weight, dimensions, material, capacity — bold the numbers
+- Specs paragraph: USE THE VERIFIED SPECS ABOVE EXACTLY. Bold all numbers.
+  If VERIFIED SPECS are provided, you MUST use those exact values — never guess or approximate.
+  If no VERIFIED SPECS, use only what's in the product name/description.
 - Performance paragraph: what it's like in actual use, what surprised you, what didn't
 - PROS: 2-4 real reasons to buy. CONS: 1-3 honest weaknesses. No softening.
 - "Best for:" one specific sentence. Who exactly should buy this?
