@@ -420,20 +420,23 @@ def _search_products(keyword: str, language: str) -> list[dict]:
 
 def _search_products_serpapi(keyword: str) -> list[dict]:
     """
-    Google CSE 실패 시 SerpAPI Amazon 검색으로 폴백.
+    Google CSE 실패 시 SerpAPI Google 검색으로 폴백 (site:amazon.com).
     SERPAPI_KEY 필요. EN 전용.
     """
     if not config.SERPAPI_KEY:
         return []
 
+    current_year = datetime.date.today().year
     try:
         resp = httpx.get(
             "https://serpapi.com/search",
             params={
-                "engine":  "amazon",
-                "q":       keyword,
+                "engine":  "google",
+                "q":       f"site:amazon.com/dp {keyword} {current_year}",
                 "api_key": config.SERPAPI_KEY,
-                "amazon_domain": "amazon.com",
+                "gl":      "us",
+                "hl":      "en",
+                "num":     10,
             },
             timeout=20,
         )
@@ -441,28 +444,23 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
         data = resp.json()
 
         products = []
-        for item in data.get("organic_results", [])[:8]:
+        for item in data.get("organic_results", [])[:10]:
             url = item.get("link", "")
-            # /dp/ 또는 /gp/ URL만
             if "amazon.com/dp/" not in url and "amazon.com/gp/" not in url:
-                asin = item.get("asin", "")
-                url = f"https://www.amazon.com/dp/{asin}" if asin else ""
-            if not url:
                 continue
 
-            price_raw = (item.get("price") or
-                         item.get("extracted_price") or
-                         item.get("price_string") or "")
-            price = f"${price_raw}" if price_raw and not str(price_raw).startswith("$") else str(price_raw)
+            snippet = item.get("snippet", "")
+            price_match = re.search(r'\$[\d,]+(?:\.\d+)?', snippet)
+            price = price_match.group(0) if price_match else ""
 
             products.append({
                 "name":         item.get("title", "")[:80],
                 "url":          url,
                 "price":        price,
-                "snippet":      item.get("snippet", "")[:150],
+                "snippet":      snippet[:150],
                 "features":     [],
-                "rating":       str(item.get("rating", "")),
-                "review_count": str(item.get("reviews", "")),
+                "rating":       "",
+                "review_count": "",
                 "source":       "amazon",
             })
 
