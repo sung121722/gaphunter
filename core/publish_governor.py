@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 # 설정값 — AdSense 승인 기준
 # ══════════════════════════════════════════════════════════════
 
-MIN_INTERVAL_HOURS   = 10     # 발행 간격 최소 시간
+MIN_INTERVAL_HOURS   = 1      # 발행 간격 최소 시간 (daily 스케줄 12h, 테스트용 1h)
 RAMP_DAYS            = 90     # 초기 램프업 기간 (일)
 RAMP_MAX_PER_WEEK    = 14     # 램프업 중 주당 최대
 STEADY_MAX_PER_WEEK  = 14     # 안정기 주당 최대
