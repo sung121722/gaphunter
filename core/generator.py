@@ -432,7 +432,7 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
             "https://serpapi.com/search",
             params={
                 "engine":  "google",
-                "q":       f"site:amazon.com/dp {keyword} {current_year}",
+                "q":       f"{keyword} site:amazon.com",
                 "api_key": config.SERPAPI_KEY,
                 "gl":      "us",
                 "hl":      "en",
@@ -446,7 +446,13 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
         products = []
         for item in data.get("organic_results", [])[:10]:
             url = item.get("link", "")
-            if "amazon.com/dp/" not in url and "amazon.com/gp/" not in url:
+            # /dp/ URL만 허용 — 카테고리/검색/리스트 페이지 제외
+            if "amazon.com/dp/" not in url:
+                continue
+            # 키워드와 무관한 제품 필터링 (제목에 주요 단어 포함 여부 체크)
+            title = item.get("title", "").lower()
+            kw_words = [w for w in keyword.lower().split() if len(w) > 3]
+            if not any(w in title for w in kw_words):
                 continue
 
             snippet = item.get("snippet", "")
