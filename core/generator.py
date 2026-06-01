@@ -428,15 +428,15 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
 
     current_year = datetime.date.today().year
     try:
+        # Google Shopping 엔진 — 가격·평점·Amazon URL 포함
         resp = httpx.get(
             "https://serpapi.com/search",
             params={
-                "engine":  "google",
-                "q":       f"{keyword} site:amazon.com",
+                "engine":  "google_shopping",
+                "q":       keyword,
                 "api_key": config.SERPAPI_KEY,
                 "gl":      "us",
                 "hl":      "en",
-                "num":     10,
             },
             timeout=20,
         )
@@ -444,29 +444,33 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
         data = resp.json()
 
         products = []
-        for item in data.get("organic_results", [])[:10]:
-            url = item.get("link", "")
-            # /dp/ URL만 허용 — 카테고리/검색/리스트 페이지 제외
-            if "amazon.com/dp/" not in url:
-                continue
-            # 키워드와 무관한 제품 필터링 (제목에 주요 단어 포함 여부 체크)
-            title = item.get("title", "").lower()
-            kw_words = [w for w in keyword.lower().split() if len(w) > 3]
-            if not any(w in title for w in kw_words):
+        for item in data.get("shopping_results", [])[:15]:
+            # Amazon 제품만 선택
+            source = (item.get("source") or "").lower()
+            link   = item.get("link") or item.get("product_link") or ""
+            if "amazon" not in source and "amazon.com" not in link:
                 continue
 
-            snippet = item.get("snippet", "")
-            price_match = re.search(r'\$[\d,]+(?:\.\d+)?', snippet)
-            price = price_match.group(0) if price_match else ""
+            # ASIN 추출 or 링크 사용
+            asin_match = re.search(r'/dp/([A-Z0-9]{10})', link)
+            if asin_match:
+                url = f"https://www.amazon.com/dp/{asin_match.group(1)}"
+            elif "amazon.com" in link:
+                url = link
+            else:
+                continue
+
+            price_raw = item.get("price") or item.get("extracted_price") or ""
+            price = str(price_raw) if price_raw else ""
 
             products.append({
                 "name":         item.get("title", "")[:80],
                 "url":          url,
                 "price":        price,
-                "snippet":      snippet[:150],
+                "snippet":      item.get("snippet", "")[:150],
                 "features":     [],
-                "rating":       "",
-                "review_count": "",
+                "rating":       str(item.get("rating", "")),
+                "review_count": str(item.get("reviews", "")),
                 "source":       "amazon",
             })
 
