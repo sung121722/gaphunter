@@ -395,7 +395,9 @@ def _search_products(keyword: str, language: str) -> list[dict]:
         logger.info("[CSE] 상품 %d건 수집: '%s'", len(products), keyword)
 
     except Exception as e:
-        logger.warning("Google CSE 상품 검색 실패: %s", e)
+        logger.warning("Google CSE 상품 검색 실패: %s — SerpAPI 폴백 시도", e)
+        if language == "en" and config.SERPAPI_KEY:
+            products = _search_products_serpapi(keyword)
 
     # ── 크롤링으로 가격/리뷰 보완 ────────────────────────────────────
     for product in products:
@@ -414,6 +416,65 @@ def _search_products(keyword: str, language: str) -> list[dict]:
 
     logger.info("최종: %d개 상품 확보 '%s'", len(products), keyword)
     return products
+
+
+def _search_products_serpapi(keyword: str) -> list[dict]:
+    """
+    Google CSE 실패 시 SerpAPI Amazon 검색으로 폴백.
+    SERPAPI_KEY 필요. EN 전용.
+    """
+    if not config.SERPAPI_KEY:
+        return []
+
+    try:
+        resp = httpx.get(
+            "https://serpapi.com/search",
+            params={
+                "engine":  "amazon",
+                "q":       keyword,
+                "api_key": config.SERPAPI_KEY,
+                "amazon_domain": "amazon.com",
+            },
+            timeout=20,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        products = []
+        for item in data.get("organic_results", [])[:8]:
+            url = item.get("link", "")
+            # /dp/ 또는 /gp/ URL만
+            if "amazon.com/dp/" not in url and "amazon.com/gp/" not in url:
+                asin = item.get("asin", "")
+                url = f"https://www.amazon.com/dp/{asin}" if asin else ""
+            if not url:
+                continue
+
+            price_raw = (item.get("price") or
+                         item.get("extracted_price") or
+                         item.get("price_string") or "")
+            price = f"${price_raw}" if price_raw and not str(price_raw).startswith("$") else str(price_raw)
+
+            products.append({
+                "name":         item.get("title", "")[:80],
+                "url":          url,
+                "price":        price,
+                "snippet":      item.get("snippet", "")[:150],
+                "features":     [],
+                "rating":       str(item.get("rating", "")),
+                "review_count": str(item.get("reviews", "")),
+                "source":       "amazon",
+            })
+
+            if len(products) >= 5:
+                break
+
+        logger.info("[SERPAPI] 상품 %d건 수집: '%s'", len(products), keyword)
+        return products
+
+    except Exception as e:
+        logger.warning("SerpAPI 상품 검색 실패: %s", e)
+        return []
 
 
 def _search_products_organic(keyword: str, language: str) -> list[dict]:
