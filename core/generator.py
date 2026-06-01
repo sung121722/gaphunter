@@ -819,10 +819,13 @@ def _fix_nested_links(text: str) -> str:
     return text
 
 
-def _inject_affiliate_links(text: str, language: str) -> str:
+def _inject_affiliate_links(text: str, language: str, product_url_map: dict = None) -> str:
     """Replace affiliate placeholders with real HTML anchor tags.
+    product_url_map: {제품명(소문자) → amazon.com/dp/ URL} — 실제 URL 우선 사용.
     이중 중첩 방지: Claude가 이미 <a> 태그를 넣은 경우 플레이스홀더만 교체.
     """
+    if product_url_map is None:
+        product_url_map = {}
     if language == "ko":
         pid = config.COUPANG_PARTNERS_ID or "AF6344014"
 
@@ -859,6 +862,12 @@ def _inject_affiliate_links(text: str, language: str) -> str:
     tag = config.AMAZON_ASSOCIATES_ID or ""
 
     def _amazon_url(kw: str) -> str:
+        # 실제 /dp/ URL이 있으면 그걸 쓴다 (검색 URL 대신)
+        real_url = product_url_map.get(kw.strip().lower())
+        if real_url:
+            base = real_url.split("?")[0].rstrip("/")
+            return f"{base}?tag={tag}" if tag else real_url
+        # 폴백: 검색 URL
         kw_enc = kw.strip().replace(" ", "+")
         return f"https://www.amazon.com/s?k={kw_enc}" + (f"&tag={tag}" if tag else "")
 
@@ -1066,7 +1075,15 @@ def generate_post(keyword: str, gap_data: dict, language: str = "en") -> dict:
     # 메타 디스크립션 추출 (첫 줄 <!-- META: ... --> 주석)
     meta_description, content = _extract_meta(content)
 
-    content = _inject_affiliate_links(content, language)
+    # 실제 제품 URL 맵 생성 (제품명 → amazon.com/dp/ URL)
+    product_url_map = {}
+    if language == "en":
+        for p in products:
+            name = (p.get("name") or "").strip()
+            url  = (p.get("url") or "")
+            if name and ("amazon.com/dp/" in url or "amazon.com/gp/" in url):
+                product_url_map[name.lower()] = url
+    content = _inject_affiliate_links(content, language, product_url_map)
     content = _convert_markdown_links(content)
     content = _post_process_content(content)   # em dash 제거, FOMO 1개 제한
 
