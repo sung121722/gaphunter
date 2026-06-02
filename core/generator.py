@@ -428,15 +428,13 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
 
     current_year = datetime.date.today().year
     try:
-        # Google Shopping 엔진 — 가격·평점·Amazon URL 포함
+        # SerpAPI Amazon 엔진 — 직접 Amazon 검색
         resp = httpx.get(
             "https://serpapi.com/search",
             params={
-                "engine":  "google_shopping",
+                "engine":  "amazon",
                 "q":       keyword,
                 "api_key": config.SERPAPI_KEY,
-                "gl":      "us",
-                "hl":      "en",
             },
             timeout=20,
         )
@@ -444,24 +442,22 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
         data = resp.json()
 
         products = []
-        for item in data.get("shopping_results", [])[:15]:
-            # Amazon 제품만 선택
-            source = (item.get("source") or "").lower()
-            link   = item.get("link") or item.get("product_link") or ""
-            if "amazon" not in source and "amazon.com" not in link:
+        for item in data.get("organic_results", [])[:10]:
+            asin = item.get("asin", "")
+            if not asin:
                 continue
+            url = f"https://www.amazon.com/dp/{asin}"
 
-            # ASIN 추출 or 링크 사용
-            asin_match = re.search(r'/dp/([A-Z0-9]{10})', link)
-            if asin_match:
-                url = f"https://www.amazon.com/dp/{asin_match.group(1)}"
-            elif "amazon.com" in link:
-                url = link
+            price_raw = (item.get("price", {}) or {})
+            if isinstance(price_raw, dict):
+                price = price_raw.get("raw") or price_raw.get("current_price") or ""
             else:
-                continue
+                price = str(price_raw)
+            if price and not price.startswith("$"):
+                price = f"${price}"
 
-            price_raw = item.get("price") or item.get("extracted_price") or ""
-            price = str(price_raw) if price_raw else ""
+            rating = item.get("rating") or ""
+            reviews = item.get("reviews") or item.get("ratings_total") or ""
 
             products.append({
                 "name":         item.get("title", "")[:80],
@@ -469,8 +465,9 @@ def _search_products_serpapi(keyword: str) -> list[dict]:
                 "price":        price,
                 "snippet":      item.get("snippet", "")[:150],
                 "features":     [],
-                "rating":       str(item.get("rating", "")),
-                "review_count": str(item.get("reviews", "")),
+                "rating":       str(rating),
+                "review_count": str(reviews),
+                "asin":         asin,
                 "source":       "amazon",
             })
 
