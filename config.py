@@ -11,11 +11,10 @@ load_dotenv(dotenv_path=pathlib.Path(__file__).parent / ".env", override=True)
 
 # ─── API Keys ────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY      = os.getenv("ANTHROPIC_API_KEY")
-SERPAPI_KEY            = os.getenv("SERPAPI_KEY")              # [DEPRECATED] 더 이상 사용 안 함
-GOOGLE_CSE_KEY         = os.getenv("GOOGLE_CSE_KEY")          # Google Custom Search API 키
-GOOGLE_SEARCH_CX       = os.getenv("GOOGLE_SEARCH_CX")        # Custom Search Engine ID
-# True = 전체 웹 검색 가능 (Serper.dev 등 전환 시 설정)
-# False = amazon.com 전용 → SERP 분석은 dummy, 상품 검색만 CSE 사용
+SERPER_API_KEY         = os.getenv("SERPER_API_KEY")           # Serper.dev — Google 검색 (무료 2500회/월)
+SERPAPI_KEY            = os.getenv("SERPAPI_KEY")              # [DEPRECATED]
+GOOGLE_CSE_KEY         = os.getenv("GOOGLE_CSE_KEY")          # [DEPRECATED]
+GOOGLE_SEARCH_CX       = os.getenv("GOOGLE_SEARCH_CX")        # [DEPRECATED]
 GOOGLE_SEARCH_FULL_WEB = os.getenv("GOOGLE_SEARCH_FULL_WEB", "false").lower() in ("true", "1", "yes")
 GOOGLE_CSE_ID          = os.getenv("GOOGLE_CSE_ID")           # Blogger (EN)
 GOOGLE_CSE_ID_KO       = os.getenv("GOOGLE_CSE_ID_KO")        # Tistory (KO)
@@ -86,7 +85,7 @@ def print_config_summary() -> None:
     print(f"{'='*50}")
     print(f"  Mode              : {mode}")
     print(f"  Max keywords/run  : {MAX_KEYWORDS_PER_RUN}")
-    print(f"  Max CSE/day       : {MAX_CSE_CALLS_PER_DAY}  (Google Custom Search, 무료 100/일)")
+    print(f"  Serper key set    : {'YES' if SERPER_API_KEY else 'NO (product search will use dummy)'}")
     print(f"  Max Claude/run    : {MAX_CLAUDE_CALLS_PER_RUN}")
     print(f"  Claude model      : {CLAUDE_MODEL}")
     print(f"  Colab URL set     : {'YES' if COLAB_PREDICTOR_URL else 'NO (using dummy predictor)'}")

@@ -331,13 +331,13 @@ def _crawl_product_details(url: str, language: str) -> dict:
 
 def _search_products(keyword: str, language: str) -> list[dict]:
     """
-    Google Custom Search API로 Amazon/Coupang 상품 URL 수집.
+    Serper.dev로 Amazon/Coupang 상품 URL 수집.
     가격/리뷰는 상품 페이지 직접 크롤링으로 보완.
     DRY_RUN 또는 키 없으면 더미 반환.
 
     Returns: [{"name": str, "url": str, "price": str, "features": [...], ...}, ...]
     """
-    if config.DRY_RUN_MODE or not config.GOOGLE_CSE_KEY or not config.GOOGLE_SEARCH_CX:
+    if config.DRY_RUN_MODE or not config.SERPER_API_KEY:
         logger.info("[DRY] _search_products: returning dummy products for '%s'", keyword)
         return _dummy_products(keyword, language)
 
@@ -347,26 +347,26 @@ def _search_products(keyword: str, language: str) -> list[dict]:
     else:
         query = f"site:amazon.com {keyword} {current_year}"
 
-    params = {
-        "key": config.GOOGLE_CSE_KEY,
-        "cx":  config.GOOGLE_SEARCH_CX,
-        "q":   query,
-        "num": 10,
-        "gl":  "kr" if language == "ko" else "us",
-        "hl":  "ko" if language == "ko" else "en",
-    }
-
     products = []
     try:
-        resp = httpx.get(
-            "https://www.googleapis.com/customsearch/v1",
-            params=params,
+        resp = httpx.post(
+            "https://google.serper.dev/search",
+            headers={
+                "X-API-KEY":   config.SERPER_API_KEY,
+                "Content-Type": "application/json",
+            },
+            json={
+                "q":   query,
+                "num": 10,
+                "gl":  "kr" if language == "ko" else "us",
+                "hl":  "ko" if language == "ko" else "en",
+            },
             timeout=15,
         )
         resp.raise_for_status()
         data = resp.json()
 
-        for item in data.get("items", []):
+        for item in data.get("organic", []):
             url     = item.get("link", "")
             snippet = item.get("snippet", "")
 
@@ -392,12 +392,10 @@ def _search_products(keyword: str, language: str) -> list[dict]:
             if len(products) >= 5:
                 break
 
-        logger.info("[CSE] 상품 %d건 수집: '%s'", len(products), keyword)
+        logger.info("[SERPER] 상품 %d건 수집: '%s'", len(products), keyword)
 
     except Exception as e:
-        logger.warning("Google CSE 상품 검색 실패: %s — SerpAPI 폴백 시도", e)
-        if language == "en" and config.SERPAPI_KEY:
-            products = _search_products_serpapi(keyword)
+        logger.warning("Serper.dev 상품 검색 실패: %s", e)
 
     # ── 크롤링으로 가격/리뷰 보완 ────────────────────────────────────
     for product in products:

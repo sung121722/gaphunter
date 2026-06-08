@@ -1,10 +1,11 @@
 name: GapHunter Daily
 
 on:
-  schedule:
-    - cron: '17 1 * * *'   # 매일 01:17 UTC = 10:17 KST (1회차)
-    - cron: '17 13 * * *'  # 매일 13:17 UTC = 22:17 KST (2회차)
-  workflow_dispatch:         # 수동 실행 버튼
+  # schedule:
+  #   - cron: '17 1 * * *'   # 매일 01:17 UTC = 10:17 KST (1회차)
+  #   - cron: '17 13 * * *'  # 매일 13:17 UTC = 22:17 KST (2회차)
+  # ⚠️ 자동 스케줄 일시 중지 중 — Serper.dev 키 설정 후 주석 해제
+  workflow_dispatch:         # 수동 실행만 허용
 
 jobs:
 
@@ -31,8 +32,7 @@ jobs:
         id: run
         env:
           ANTHROPIC_API_KEY:     ${{ secrets.ANTHROPIC_API_KEY }}
-          GOOGLE_CSE_KEY:        ${{ secrets.GOOGLE_CSE_KEY }}
-          GOOGLE_SEARCH_CX:      ${{ secrets.GOOGLE_SEARCH_CX }}
+          SERPER_API_KEY:        ${{ secrets.SERPER_API_KEY }}
           SERPAPI_KEY:           ${{ secrets.SERPAPI_KEY }}
           AMAZON_ASSOCIATES_ID:  ${{ secrets.AMAZON_ASSOCIATES_ID }}
           BLOGGER_BLOG_ID:       ${{ secrets.BLOGGER_BLOG_ID }}
